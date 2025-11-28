@@ -95,7 +95,8 @@ const batch = buffer.slice(0, BATCH_SIZE);
 try{
 const resp = await fetch(GAS_ENDPOINT, {
 method: 'POST',
-headers: {'Content-Type': 'application/json'},
+// headers: {'Content-Type': 'application/json'},
+headers: {'Content-Type': 'text/plain'},
 body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
 });
 
