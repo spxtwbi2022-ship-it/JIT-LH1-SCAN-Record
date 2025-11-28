@@ -157,7 +157,15 @@ async function loadSellers() { // 函式名稱改為 loadSellers
 }
 
 btnStart.addEventListener('click', ()=>{
-if(!driverInput.value){ alert('請輸入 Driver ID'); return; }
+// 【調整檢查邏輯】 必須同時輸入 Driver ID 且選擇 Seller
+if(!driverInput.value){ 
+    alert('請輸入 Driver ID'); 
+    return; 
+}
+if(!sellerSelect.value){ 
+    alert('請選擇賣家 Seller'); 
+    return; 
+}
 if(html5QrScanner) return;
 html5QrScanner = new Html5Qrcode("qr-reader");
 html5QrScanner.start({ facingMode: 'environment' }, {
@@ -185,8 +193,9 @@ stopBatchTimer();
 btnSync.addEventListener('click', ()=>{ sendBatch(); });
 
 
-// 初始載入
-loadLocalBuffer();
+// 初始載入：
+loadLocalBuffer(); // 恢復離線緩存
+loadVendors(); // 載入賣家清單
 // 自動重試上傳(網路復原時)
 window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
 </script>
