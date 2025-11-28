@@ -137,7 +137,6 @@ async function loadSellers() { // 函式名稱改為 loadSellers
         // 清空下拉選單
         sellerSelect.innerHTML = '<option value="">-- 請選擇賣家 --</option>'; 
 
-        // 檢查 j.sellers 欄位 (後端 GAS 的 doGet 也要改回傳 sellers 而非 vendors)
         if (j.status === 'ok' && j.sellers && j.sellers.length > 0) {
             j.sellers.forEach(seller => { // 遍歷變數名稱修改
                 const option = document.createElement('option');
