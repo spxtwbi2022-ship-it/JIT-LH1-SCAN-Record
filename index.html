@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>掃箱系統</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body{font-family:system-ui, -apple-system, 'Noto Sans TC', sans-serif; padding:12px}
+#controls{display:flex; gap:8px; margin-bottom:8px}
+#log{white-space:pre-wrap; max-height:200px; overflow:auto; background:#f7f7f7; padding:8px}
+button{padding:8px 12px}
+</style>
+</head>
+<body>
+<h2>司機掃箱系統</h2>
+
+<div id="controls">
+<label>Driver ID: <input id="driverId" placeholder="輸入司機編號" /></label>
+<label>Seller: <input id="seller" placeholder="賣家名稱/編號 (可選)" /></label>
+<button id="btnStart">啟動相機掃描</button>
+<button id="btnStop">停止</button>
+<button id="btnSync">立即上傳</button>
+</div>
+
+
+<div id="qr-reader" style="width:100%; max-width:480px; margin-bottom:8px"></div>
+<div id="status">尚未開始掃描</div>
+<h4>掃描紀錄（session）</h4>
+<div id="log"></div>
+
+<script src="config.js"></script>
+<script>
+// CONFIG from config.js: GAS_ENDPOINT, BATCH_SIZE, BATCH_TIMEOUT_MS
+const driverInput = document.getElementById('driverId');
+const sellerInput = document.getElementById('seller');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
+const btnSync = document.getElementById('btnSync');
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+
+
+let html5QrScanner = null;
+let buffer = []; // 未送出的掃描資料
+let sending = false;
+let timerId = null;
+
+// 載入 local cache 的未送出資料
+const LOCAL_KEY = 'qr_scan_offline_buffer_v1';
+function loadLocalBuffer(){
+try{
+const raw = localStorage.getItem(LOCAL_KEY);
+if(raw){ buffer = JSON.parse(raw); appendLog(`從 localStorage 載入 ${buffer.length} 筆`); }
+}catch(e){ console.error(e);} }
+function saveLocalBuffer(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(buffer)); }
+
+
+function appendLog(text){
+logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
+}
+
+function enqueue(code){
+const item = {
+code: code,
+driver: driverInput.value || 'unknown',
+seller: sellerInput.value || '',
+ts: new Date().toISOString()
+};
+// simple session dedupe
+const last = buffer[buffer.length-1];
+if(last && last.code === item.code){ appendLog('忽略重複掃描: '+item.code); return; }
+buffer.push(item);
+saveLocalBuffer();
+appendLog('加入 buffer: '+code+' (buffer='+buffer.length+')');
+
+
+if(buffer.length >= BATCH_SIZE) sendBatch();
+}
+
+async function sendBatch(){
+if(sending) return;
+if(buffer.length === 0) return;
+if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
+
+
+sending = true;
+const batch = buffer.slice(0, BATCH_SIZE);
+try{
+const resp = await fetch(GAS_ENDPOINT, {
+method: 'POST',
+headers: {'Content-Type': 'application/json'},
+body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
+});
+const j = await resp.json();
+if(j.status === 'ok'){
+buffer = buffer.slice(batch.length);
+saveLocalBuffer();
+appendLog('上傳成功, 剩餘 buffer='+buffer.length);
+} else {
+appendLog('後端回傳錯誤: '+JSON.stringify(j));
+}
+}catch(err){
+console.error(err); appendLog('上傳失敗，稍後重試');
+}
+sending = false;
+}
+
+
+function startBatchTimer(){
+stopBatchTimer();
+timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
+}
+function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
+
+
+btnStart.addEventListener('click', ()=>{
+if(!driverInput.value){ alert('請輸入 Driver ID'); return; }
+if(html5QrScanner) return;
+html5QrScanner = new Html5Qrcode("qr-reader");
+html5QrScanner.start({ facingMode: 'environment' }, {
+fps: 10,
+qrbox: {width:250, height:250}
+}, (decodedText, decodedResult)=>{
+statusEl.textContent = '掃到: '+decodedText;
+enqueue(decodedText);
+}, (errorMessage) => {
+// parse errors or no result
+}).then(()=>{
+appendLog('相機啟動'); statusEl.textContent='掃描中...';
+}).catch(err=>{ alert('無法啟動相機: '+err); });
+
+
+startBatchTimer();
+});
+
+btnStop.addEventListener('click', ()=>{
+if(html5QrScanner){ html5QrScanner.stop().then(()=>{ html5QrScanner.clear(); html5QrScanner=null; appendLog('相機已停止'); statusEl.textContent='已停止'; }).catch(e=>console.error(e)); }
+stopBatchTimer();
+});
+
+
+btnSync.addEventListener('click', ()=>{ sendBatch(); });
+
+
+// 初始載入
+loadLocalBuffer();
+// 自動重試上傳(網路復原時)
+window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
+</script>
+</body>
+</html>
+
