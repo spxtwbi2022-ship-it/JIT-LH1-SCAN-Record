@@ -89,41 +89,28 @@ if(sending) return;
 if(buffer.length === 0) return;
 if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
 
-
-// sending = true;
-// const batch = buffer.slice(0, BATCH_SIZE);
-// try{
-// const resp = await fetch(GAS_ENDPOINT, {
-// method: 'POST',
-// headers: {'Content-Type': 'application/json'},
-// body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
-// });
-// const j = await resp.json();
-// if(j.status === 'ok'){
-// buffer = buffer.slice(batch.length);
-// saveLocalBuffer();
-// appendLog('上傳成功, 剩餘 buffer='+buffer.length);
-// } else {
-// appendLog('後端回傳錯誤: '+JSON.stringify(j));
-// }
-// }catch(err){
-// console.error(err); appendLog('上傳失敗，稍後重試');
-// }
-// sending = false;
-// }
     
 sending = true;
-fetch(GAS_ENDPOINT, {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json; charset=utf-8'},
-  body: JSON.stringify({
-    records:[{driver:'test', seller:'s1', code:'C123', ts:new Date().toISOString()}]
-  })
-})
-.then(r => r.json())
-.then(console.log)
-.catch(console.error);
-
+const batch = buffer.slice(0, BATCH_SIZE);
+try{
+const resp = await fetch(GAS_ENDPOINT, {
+method: 'POST',
+headers: {'Content-Type': 'application/json'},
+body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
+});
+const j = await resp.json();
+if(j.status === 'ok'){
+buffer = buffer.slice(batch.length);
+saveLocalBuffer();
+appendLog('上傳成功, 剩餘 buffer='+buffer.length);
+} else {
+appendLog('後端回傳錯誤: '+JSON.stringify(j));
+}
+}catch(err){
+console.error(err); appendLog('上傳失敗，稍後重試');
+}
+sending = false;
+}
 
 function startBatchTimer(){
 stopBatchTimer();
