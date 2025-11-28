@@ -120,25 +120,32 @@ timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
 function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
 
 // 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
-async function loadVendors() {
+async function loadSellers() { // 函式名稱改為 loadSellers
     appendLog('嘗試載入賣家清單...');
     try {
         // 使用 doGet 接口，新增 action 參數
-        const vendorEndpoint = GAS_ENDPOINT + '?action=getVendors'; 
-        const resp = await fetch(vendorEndpoint);
+        const sellerEndpoint = GAS_ENDPOINT + '?action=getSellers'; // 變數名稱與 action 參數修改
+        const resp = await fetch(sellerEndpoint);
+        
+        // 檢查 HTTP 狀態碼
+        if (!resp.ok) {
+            throw new Error(`HTTP 錯誤: ${resp.status}`);
+        }
+        
         const j = await resp.json();
         
         // 清空下拉選單
         sellerSelect.innerHTML = '<option value="">-- 請選擇賣家 --</option>'; 
 
-        if (j.status === 'ok' && j.vendors && j.vendors.length > 0) {
-            j.vendors.forEach(vendor => {
+        // 檢查 j.sellers 欄位 (後端 GAS 的 doGet 也要改回傳 sellers 而非 vendors)
+        if (j.status === 'ok' && j.sellers && j.sellers.length > 0) {
+            j.sellers.forEach(seller => { // 遍歷變數名稱修改
                 const option = document.createElement('option');
-                option.value = vendor;
-                option.textContent = vendor;
+                option.value = seller;
+                option.textContent = seller;
                 sellerSelect.appendChild(option);
             });
-            appendLog(`成功載入 ${j.vendors.length} 個賣家`);
+            appendLog(`成功載入 ${j.sellers.length} 個賣家`);
         } else {
             // 如果清單為空或錯誤
             appendLog('賣家清單載入失敗或為空: ' + (j.message || '請確認 GAS 設置'));
