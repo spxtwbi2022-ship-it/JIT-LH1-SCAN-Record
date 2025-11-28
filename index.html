@@ -70,7 +70,7 @@ function enqueue(code){
 const item = {
 code: code,
 driver: driverInput.value || 'unknown',
-seller: sellerInput.value || '',
+seller: sellerSelect.value || '',
 ts: new Date().toISOString()
 };
 // simple session dedupe
