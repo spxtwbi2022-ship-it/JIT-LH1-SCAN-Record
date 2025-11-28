@@ -17,7 +17,12 @@ button{padding:8px 12px}
 
 <div id="controls">
 <label>Driver ID: <input id="driverId" placeholder="輸入司機編號" /></label>
-<label>Seller: <input id="seller" placeholder="賣家名稱/編號 (可選)" /></label>
+<!-- <label>Seller: <select id="seller" placeholder="賣家名稱/編號 (可選)" /></label> -->
+<label>Seller: 
+    <select id="seller">
+        <option value="">-- 載入中... --</option>
+    </select>
+</label>
 <button id="btnStart">啟動相機掃描</button>
 <button id="btnStop">停止</button>
 <button id="btnSync">立即上傳</button>
@@ -33,7 +38,8 @@ button{padding:8px 12px}
 <script>
 // CONFIG from config.js: GAS_ENDPOINT, BATCH_SIZE, BATCH_TIMEOUT_MS
 const driverInput = document.getElementById('driverId');
-const sellerInput = document.getElementById('seller');
+// const sellerInput = document.getElementById('seller');
+const sellerSelect = document.getElementById('seller');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
 const btnSync = document.getElementById('btnSync');
@@ -113,6 +119,36 @@ timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
 }
 function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
 
+// 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
+async function loadVendors() {
+    appendLog('嘗試載入賣家清單...');
+    try {
+        // 使用 doGet 接口，新增 action 參數
+        const vendorEndpoint = GAS_ENDPOINT + '?action=getVendors'; 
+        const resp = await fetch(vendorEndpoint);
+        const j = await resp.json();
+        
+        // 清空下拉選單
+        sellerSelect.innerHTML = '<option value="">-- 請選擇賣家 --</option>'; 
+
+        if (j.status === 'ok' && j.vendors && j.vendors.length > 0) {
+            j.vendors.forEach(vendor => {
+                const option = document.createElement('option');
+                option.value = vendor;
+                option.textContent = vendor;
+                sellerSelect.appendChild(option);
+            });
+            appendLog(`成功載入 ${j.vendors.length} 個賣家`);
+        } else {
+            // 如果清單為空或錯誤
+            appendLog('賣家清單載入失敗或為空: ' + (j.message || '請確認 GAS 設置'));
+        }
+    } catch (err) {
+        appendLog('載入賣家清單時發生網路錯誤');
+        console.error(err);
+        sellerSelect.innerHTML = '<option value="">-- 載入錯誤 --</option>'; 
+    }
+}
 
 btnStart.addEventListener('click', ()=>{
 if(!driverInput.value){ alert('請輸入 Driver ID'); return; }
