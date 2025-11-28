@@ -195,7 +195,7 @@ btnSync.addEventListener('click', ()=>{ sendBatch(); });
 
 // 初始載入：
 loadLocalBuffer(); // 恢復離線緩存
-loadVendors(); // 載入賣家清單
+loadSellers(); // 載入賣家清單
 // 自動重試上傳(網路復原時)
 window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
 </script>
