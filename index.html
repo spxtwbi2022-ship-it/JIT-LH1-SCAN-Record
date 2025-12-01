@@ -173,110 +173,76 @@ function enqueue(code){
     if(buffer.length >= BATCH_SIZE) sendBatch();
 }
 
+// 【最終版本：修復連發、未定義變數和傳送錯誤】
 async function sendBatch(){
     if(sending) return;
-    // ⬇️ 【修正點 1：過濾待上傳項目】
-    // 找出所有尚未上傳的項目，從中選取一個批次
-    // const pendingBuffer = buffer.filter(item => !item.sent);
     
     // ⬇️ 【步驟 1：建立包含索引的待上傳清單】
-    // 找出所有尚未上傳的項目，並同時記錄它們在原始 buffer 中的索引 (index)
     const indexedPending = buffer
         .map((item, index) => ({ item, index }))
         .filter(entry => !entry.item.sent);
 
-    // if(pendingBuffer.length === 0) {
-    //     appendLog('✅ 沒有待上傳資料。');
-    //     return; 
-    // }
-    / 這裡要使用 indexedPending.length 來判斷
+    // 檢查是否有待上傳資料
     if(indexedPending.length === 0) {
         appendLog('✅ 沒有待上傳資料。');
-        return;
+        return; 
+    }
     
-    // if(buffer.length === 0) return;
     if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
     
     sending = true;
-
-    // 從帶有索引的待上傳清單中取 batch 批次
-    const batchEntries = indexedPending.slice(0, BATCH_SIZE);
-    // 準備傳送到後端的數據 (只包含 item，不包含 index)
-    const batchToSend = batchEntries.map(entry => entry.item);
     
-    // 獲取當前批次，確保我們知道要標記哪幾筆
-    // const batch = buffer.slice(0, BATCH_SIZE);
-    // const batch = pendingBuffer.slice(0, BATCH_SIZE);
+    // 從帶有索引的待上傳清單中取 batch 批次
+    const batchEntries = indexedPending.slice(0, BATCH_SIZE); 
+    
+    // 準備傳送到後端的數據 (只包含 item)
+    const batchToSend = batchEntries.map(entry => entry.item);
+
     try{
         const resp = await fetch(GAS_ENDPOINT, {
         method: 'POST',
-        // headers: {'Content-Type': 'application/json'},
         headers: {'Content-Type': 'text/plain'},
-        // 確保您在 enqueue 中已經將 ts 轉換為本地字串，否則這裡使用 UTC 字串
-        // body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
+        // 傳送正確的 batchToSend
         body: JSON.stringify({ records: batchToSend, api_key: API_KEY || '' })
     });
     
-    // 【✅ 新增檢查】即使請求成功，也要確保狀態碼是 200
+    // 【檢查 HTTP 狀態碼】
     if (!resp.ok) {
-        // 如果狀態碼是 4xx/5xx，顯示具體狀態碼
         const errorText = await resp.text();
         throw new Error(`HTTP 錯誤: ${resp.status} - ${errorText.substring(0, 50)}`);
     }
 
     const j = await resp.json();
     if(j.status === 'ok'){
-        // buffer = buffer.slice(batch.length);
         
-        // ⬇️ 【核心修改：標記為已上傳】
-        // for(let i = 0; i < batch.length; i++){
-        //     // 直接對 buffer 陣列的前 batch.length 筆數據添加 sent 屬性
-        //     buffer[i].sent = true; 
-        // }
-
-        // ⬇️ 【修正點 2：在原 buffer 中標記】
-        // 遍歷成功的 batch，並找到原 buffer 中對應的物件進行標記
-        // batch.forEach(sentItem => {
-        //     // 找到原 buffer 中 code 相同的項目，並標記 sent=true
-        //     const originalItem = buffer.find(b => b.code === sentItem.code);
-        //     if(originalItem) {
-        //         originalItem.sent = true;
-        //     }
-        // });
-        // ⬇️ 【步驟 2：使用索引直接在原 buffer 上標記】
-        // 遍歷成功的批次，並使用其索引直接修改原始 buffer
+        // 【使用索引直接在原 buffer 上標記 sent=true】
         batchEntries.forEach(entry => {
             buffer[entry.index].sent = true;
         });
         
-        saveLocalBuffer(); // 儲存帶有 sent 標記的 buffer
+        saveLocalBuffer();
     
-        // 計算並更新日誌
         const remainingToUpload = buffer.filter(item => !item.sent).length; 
-        appendLog(`✅ 上傳成功, 待上傳: ${remainingToUpload} 筆 (總紀錄數: ${buffer.length})`);
+        // 修正日誌，使用 batchToSend.length 顯示成功上傳筆數
+        appendLog(`✅ 上傳成功 ${batchToSend.length} 筆, 剩餘待上傳: ${remainingToUpload} 筆 (總紀錄數: ${buffer.length})`);
         
-        // ⬇️ 【關鍵步驟】重新繪製表格，現在 updateScanList 會看到 sent: true
         updateScanList();
 
-        // ⬇️ 【步驟 3：修正連發邏輯，確保不會無限迴圈】
-        // 如果還有未上傳的數據，立即嘗試發送下一批
+        // 【連發機制】
         if (remainingToUpload > 0) {
-            // 避免 Call Stack 溢出，使用 setTimeout
             setTimeout(sendBatch, 0); 
         }
-        // appendLog('上傳成功, 剩餘 buffer='+buffer.length);
+        
         } else {
         appendLog('後端回傳錯誤: '+JSON.stringify(j));
     }
-    // }catch(err){
-        // console.error(err); appendLog('上傳失敗，稍後重試');
-        // }
     }catch(err){
-        // 【✅ 修正日誌】顯示具體的錯誤名稱和訊息
         appendLog(`🔴 上傳失敗，稍後重試。錯誤類型: ${err.name} - ${err.message}`); 
         console.error(err); 
+    } finally {
+        // 確保無論成功或失敗，上傳狀態旗標都被重置
+        sending = false;
     }
-    sending = false;
 }
 
 function startBatchTimer(){
