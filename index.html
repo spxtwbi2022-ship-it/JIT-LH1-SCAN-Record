@@ -177,7 +177,13 @@ async function sendBatch(){
     if(sending) return;
     // ⬇️ 【修正點 1：過濾待上傳項目】
     // 找出所有尚未上傳的項目，從中選取一個批次
-    const pendingBuffer = buffer.filter(item => !item.sent);
+    // const pendingBuffer = buffer.filter(item => !item.sent);
+    
+    // ⬇️ 【步驟 1：建立包含索引的待上傳清單】
+    // 找出所有尚未上傳的項目，並同時記錄它們在原始 buffer 中的索引 (index)
+    const indexedPending = buffer
+        .map((item, index) => ({ item, index }))
+        .filter(entry => !entry.item.sent);
 
     if(pendingBuffer.length === 0) {
         appendLog('✅ 沒有待上傳資料。');
@@ -188,10 +194,15 @@ async function sendBatch(){
     if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
     
     sending = true;
+
+    // 從帶有索引的待上傳清單中取 batch 批次
+    const batchEntries = indexedPending.slice(0, BATCH_SIZE);
+    // 準備傳送到後端的數據 (只包含 item，不包含 index)
+    const batchToSend = batchEntries.map(entry => entry.item);
     
     // 獲取當前批次，確保我們知道要標記哪幾筆
     // const batch = buffer.slice(0, BATCH_SIZE);
-    const batch = pendingBuffer.slice(0, BATCH_SIZE);
+    // const batch = pendingBuffer.slice(0, BATCH_SIZE);
     try{
         const resp = await fetch(GAS_ENDPOINT, {
         method: 'POST',
@@ -220,12 +231,17 @@ async function sendBatch(){
 
         // ⬇️ 【修正點 2：在原 buffer 中標記】
         // 遍歷成功的 batch，並找到原 buffer 中對應的物件進行標記
-        batch.forEach(sentItem => {
-            // 找到原 buffer 中 code 相同的項目，並標記 sent=true
-            const originalItem = buffer.find(b => b.code === sentItem.code);
-            if(originalItem) {
-                originalItem.sent = true;
-            }
+        // batch.forEach(sentItem => {
+        //     // 找到原 buffer 中 code 相同的項目，並標記 sent=true
+        //     const originalItem = buffer.find(b => b.code === sentItem.code);
+        //     if(originalItem) {
+        //         originalItem.sent = true;
+        //     }
+        // });
+        // ⬇️ 【步驟 2：使用索引直接在原 buffer 上標記】
+        // 遍歷成功的批次，並使用其索引直接修改原始 buffer
+        batchEntries.forEach(entry => {
+            buffer[entry.index].sent = true;
         });
         
         saveLocalBuffer(); // 儲存帶有 sent 標記的 buffer
@@ -237,10 +253,10 @@ async function sendBatch(){
         // ⬇️ 【關鍵步驟】重新繪製表格，現在 updateScanList 會看到 sent: true
         updateScanList();
 
-        // ⬇️ 【修正點 3：連發機制】
+        // ⬇️ 【步驟 3：修正連發邏輯，確保不會無限迴圈】
         // 如果還有未上傳的數據，立即嘗試發送下一批
         if (remainingToUpload > 0) {
-            // 為了避免 Call Stack 溢出，使用 setTimeout 讓出主執行緒
+            // 避免 Call Stack 溢出，使用 setTimeout
             setTimeout(sendBatch, 0); 
         }
         // appendLog('上傳成功, 剩餘 buffer='+buffer.length);
