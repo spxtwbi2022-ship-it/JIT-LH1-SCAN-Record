@@ -32,7 +32,12 @@ button{padding:8px 12px}
 <div id="qr-reader" style="width:100%; max-width:480px; margin-bottom:8px"></div>
 <div id="status">尚未開始掃描</div>
 <h4>掃描紀錄（session）</h4>
-<h4>當前作業總計：<span id="totalCount">0</span> 筆</h4>
+<!-- <h4>當前作業總計：<span id="totalCount">0</span> 筆</h4> -->
+<h4>
+    總計掃描：<span id="totalCount">0</span> 筆 | 
+    已上傳：<span id="uploadedCount">0</span> 筆 |
+    待上傳：<span id="pendingCount">0</span> 筆
+</h4>
 <table id="scanTable" style="width:100%; border-collapse: collapse; margin-bottom: 12px; border: 1px solid #ccc;">
     <thead>
         <tr style="background: #e7e7e7;">
@@ -60,6 +65,10 @@ const statusEl = document.getElementById('status');
 // 掃描相關變數
 const totalCountEl = document.getElementById('totalCount');
 const scanTableBody = document.querySelector('#scanTable tbody');
+
+// ⬇️ 新增這兩行
+const uploadedCountEl = document.getElementById('uploadedCount'); 
+const pendingCountEl = document.getElementById('pendingCount');
 
 let html5QrScanner = null;
 let buffer = []; // 未送出的掃描資料
@@ -90,6 +99,9 @@ logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logE
 }
 
 function updateScanList(){
+    // ⬇️ 【修改點】新增計數邏輯
+    let uploadedCount = 0;
+    
     // 更新總計
     totalCountEl.textContent = buffer.length;
 
@@ -102,7 +114,20 @@ function updateScanList(){
         const row = scanTableBody.insertRow();
         row.insertCell().textContent = i + 1; // 序號
         row.insertCell().textContent = item.code; // QR Code 編號
+        // 處理 sent 狀態
+        const statusCell = row.insertCell();
+
+        if(item.sent){
+            row.style.backgroundColor = '#d4edda'; // 淺綠色背景
+            statusCell.textContent = '✅ 已上傳';
+            uploadedCount++; // 統計已上傳筆數
+        } else {
+            statusCell.textContent = '⏳ 待上傳';
+        }
     }
+    // ⬇️ 【修改點】更新三個計數器
+    uploadedCountEl.textContent = uploadedCount;
+    pendingCountEl.textContent = buffer.length - uploadedCount;
 }
 
 function enqueue(code){
