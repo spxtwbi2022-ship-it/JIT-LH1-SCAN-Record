@@ -125,7 +125,9 @@ function enqueue(code){
     
     // 【修改點】呼叫更新列表
     updateScanList();
-    if(buffer.length >= BATCH_SIZE) sendBatch();
+    
+    // ⬇️ 刪除或註解掉這一行，停止自動上傳
+    // if(buffer.length >= BATCH_SIZE) sendBatch();
 }
 
 async function sendBatch(){
@@ -170,11 +172,13 @@ console.error(err);
 sending = false;
 }
 
-function startBatchTimer(){
-stopBatchTimer();
-timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
-}
-function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
+// ⬇️ 刪除這個函式 (不再需要定時上傳)
+// function startBatchTimer(){
+// stopBatchTimer();
+// timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
+// }
+// ⬇️ 刪除這個函式
+// function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
 
 // 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
 async function loadSellers() { // 函式名稱改為 loadSellers
@@ -240,8 +244,8 @@ html5QrScanner.start({ facingMode: 'environment' }, {
     btnSync.disabled = true; // 【修改點】掃描啟動時禁用上傳
 }).catch(err=>{ alert('無法啟動相機: '+err); });
 
-
-startBatchTimer();
+// ⬇️ 刪除或註解掉這一行
+// startBatchTimer();
 });
 
 btnStop.addEventListener('click', ()=>{
@@ -254,7 +258,8 @@ btnStop.addEventListener('click', ()=>{
             isScanning = false; // 【修改點】停止掃描
             btnSync.disabled = false; // 【修改點】停止後啟用上傳
         }).catch(e=>console.error(e)); }
-stopBatchTimer();
+// ⬇️ 刪除或註解掉這一行
+// stopBatchTimer();
 });
 
 
