@@ -42,7 +42,9 @@ button{padding:8px 12px}
     <thead>
         <tr style="background: #e7e7e7;">
             <th style="padding: 4px; border: 1px solid #ccc;">#</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">賣家</th>
             <th style="padding: 4px; border: 1px solid #ccc;">掃描編號 (QR Code)</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">狀態</th> </tr>
         </tr>
     </thead>
     <tbody>
@@ -95,6 +97,8 @@ function updateScanList(){
         const row = scanTableBody.insertRow();
         row.insertCell().textContent = i + 1; // 序號
         row.insertCell().textContent = item.code; // QR Code 編號
+        // ⬇️ 新增賣家欄位
+        row.insertCell().textContent = item.seller; // 賣家名稱
         // 處理 sent 狀態
         const statusCell = row.insertCell();
 
@@ -187,7 +191,8 @@ async function sendBatch(){
     sending = true;
     
     // 獲取當前批次，確保我們知道要標記哪幾筆
-    const batch = buffer.slice(0, BATCH_SIZE);
+    // const batch = buffer.slice(0, BATCH_SIZE);
+    const batch = pendingBuffer.slice(0, BATCH_SIZE);
     try{
         const resp = await fetch(GAS_ENDPOINT, {
         method: 'POST',
