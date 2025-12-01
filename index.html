@@ -67,12 +67,6 @@ let sending = false;
 let timerId = null;
 let isScanning = false; // 【新增旗標】追蹤是否正在掃描
 
-
-let html5QrScanner = null;
-let buffer = []; // 未送出的掃描資料
-let sending = false;
-let timerId = null;
-
 // 載入 local cache 的未送出資料
 const LOCAL_KEY = 'qr_scan_offline_buffer_v1';
 function loadLocalBuffer(){
