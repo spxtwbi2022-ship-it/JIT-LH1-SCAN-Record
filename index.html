@@ -78,25 +78,6 @@ let isScanning = false; // 【新增旗標】追蹤是否正在掃描
 
 // 載入 local cache 的未送出資料
 const LOCAL_KEY = 'qr_scan_offline_buffer_v1';
-function loadLocalBuffer(){
-    try{
-        const raw = localStorage.getItem(LOCAL_KEY);
-        if(raw){ 
-            buffer = JSON.parse(raw); 
-            appendLog(`從 localStorage 載入 ${buffer.length} 筆`); 
-        }
-    }catch(e){ console.error(e);} 
-    // 【修改點】載入緩存後更新列表
-    updateScanList(); 
-}
-
-    
-function saveLocalBuffer(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(buffer)); }
-
-
-function appendLog(text){
-logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
-}
 
 function updateScanList(){
     // ⬇️ 【修改點】新增計數邏輯
@@ -129,13 +110,49 @@ function updateScanList(){
     uploadedCountEl.textContent = uploadedCount;
     pendingCountEl.textContent = buffer.length - uploadedCount;
 }
+    
+function loadLocalBuffer(){
+    try{
+        const raw = localStorage.getItem(LOCAL_KEY);
+        if(raw){ 
+            buffer = JSON.parse(raw); 
+            appendLog(`從 localStorage 載入 ${buffer.length} 筆`); 
+        }
+    }catch(e){ console.error(e);} 
+    // 【修改點】載入緩存後更新列表
+    updateScanList(); 
+}
+
+    
+function saveLocalBuffer(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(buffer)); }
+
+
+function appendLog(text){
+logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
+}
 
 function enqueue(code){
+    const now = new Date(); // 創建 Date 物件
+
+    // ⬇️ 【關鍵修改】將時間戳直接轉換成本地時區字串
+    const localTimeString = now.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false, // 24 小時制
+        timeZone: 'Asia/Taipei' // 確保是台灣時間
+    });
+    
     const item = {
         code: code,
         driver: driverInput.value || 'unknown',
         seller: sellerSelect.value || '',
-        ts: new Date().toISOString()
+        // ⬇️ 將 ts 欄位儲存為本地化字串 (您希望寫入 Sheet 的格式)
+        ts: localTimeString
+        // ts: new Date().toISOString()
     };
     // simple session dedupe
     const last = buffer[buffer.length-1];
