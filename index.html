@@ -96,9 +96,8 @@ function updateScanList(){
         const item = buffer[i];
         const row = scanTableBody.insertRow();
         row.insertCell().textContent = i + 1; // 序號
-        row.insertCell().textContent = item.code; // QR Code 編號
-        // ⬇️ 新增賣家欄位
         row.insertCell().textContent = item.seller; // 賣家名稱
+        row.insertCell().textContent = item.code; // QR Code 編號
         // 處理 sent 狀態
         const statusCell = row.insertCell();
 
