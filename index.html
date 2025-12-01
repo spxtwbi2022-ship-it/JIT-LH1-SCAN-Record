@@ -130,8 +130,20 @@ function loadLocalBuffer(){
 function saveLocalBuffer(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(buffer)); }
 
 
+// function appendLog(text){
+// logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
+// }
+// 【修正區域 1: 確保日誌輸出安全】
 function appendLog(text){
-logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
+    // 限制日誌訊息長度，避免顯示完整的 HTML 錯誤頁面
+    let safeText = String(text);
+    
+    // 檢查訊息是否像是 HTML 內容 (例如包含 <html 或 <body 等) 或訊息過長，進行截斷
+    if (safeText.includes('<html') || safeText.includes('<body') || safeText.length > 500) {
+        safeText = safeText.substring(0, 500) + '... (載入錯誤訊息過長或包含 HTML 已截斷)';
+    }
+
+    logEl.textContent = new Date().toLocaleTimeString() + ' - ' + safeText + '\n' + logEl.textContent;
 }
 
 function enqueue(code){
@@ -348,6 +360,40 @@ loadLocalBuffer(); // 恢復離線緩存
 loadSellers(); // 載入賣家清單
 // 自動重試上傳(網路復原時)
 window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
+// 【修正區域 2: 新增賣家切換事件，清空資料】
+sellerSelect.addEventListener('change', () => {
+    // 檢查當前是否有已記錄的資料，避免在啟動頁面時執行清空動作
+    if (buffer.length > 0) {
+        // 1. 清空 buffer (記憶體中的掃描紀錄)
+        buffer = []; 
+        
+        // 2. 清空本地儲存 (離線緩存)
+        localStorage.removeItem(LOCAL_KEY);
+        
+        // 3. 立即更新表格和計數器，讓頁面歸零
+        updateScanList();
+        
+        appendLog('🔄 賣家切換完成，掃描紀錄已清空。請開始掃描新的批次。');
+        
+        // 4. 停止自動批次上傳計時器
+        stopBatchTimer(); 
+        
+        // 5. 停止掃描中的相機 (建議操作，確保邏輯清晰)
+        if (html5QrScanner) {
+            html5QrScanner.stop().then(() => {
+                html5QrScanner.clear();
+                html5QrScanner = null;
+                appendLog('相機已自動停止 (切換作業)。');
+                statusEl.textContent = '已停止 (切換作業)';
+                isScanning = false;
+                btnSync.disabled = false;
+            }).catch(e => console.error(e));
+        } else {
+            // 如果相機沒開，確保上傳按鈕可用
+            btnSync.disabled = false;
+        }
+    }
+});
 </script>
 </body>
 </html>
