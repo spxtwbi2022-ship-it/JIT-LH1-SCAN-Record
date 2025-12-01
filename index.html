@@ -175,8 +175,12 @@ async function sendBatch(){
         
         // 由於我們不再移除數據，因此整個 buffer 保持不變，只需更新本地儲存
         saveLocalBuffer();
+
+        // ⬇️ 修改這裡：計算真正未上傳的剩餘筆數
+        const remainingToUpload = buffer.filter(item => !item.sent).length;
         
-        appendLog('上傳成功, 剩餘 buffer='+buffer.length);
+        // appendLog('上傳成功, 剩餘 buffer='+buffer.length); // ⬅️ 原本這行是錯的，因為 buffer.length 包含已上傳的
+        appendLog(`✅ 上傳成功, 待上傳: ${remainingToUpload} 筆 (總紀錄數: ${buffer.length})`); // 修正後的日誌
 
         // ⬇️ 成功上傳後，立即更新列表以顯示狀態標記
         updateScanList();
