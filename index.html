@@ -32,6 +32,17 @@ button{padding:8px 12px}
 <div id="qr-reader" style="width:100%; max-width:480px; margin-bottom:8px"></div>
 <div id="status">尚未開始掃描</div>
 <h4>掃描紀錄（session）</h4>
+<h4>當前作業總計：<span id="totalCount">0</span> 筆</h4>
+<table id="scanTable" style="width:100%; border-collapse: collapse; margin-bottom: 12px; border: 1px solid #ccc;">
+    <thead>
+        <tr style="background: #e7e7e7;">
+            <th style="padding: 4px; border: 1px solid #ccc;">#</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">掃描編號 (QR Code)</th>
+        </tr>
+    </thead>
+    <tbody>
+        </tbody>
+</table>
 <div id="log"></div>
 
 <script src="config.js"></script>
@@ -46,6 +57,16 @@ const btnSync = document.getElementById('btnSync');
 const logEl = document.getElementById('log');
 const statusEl = document.getElementById('status');
 
+// 掃描相關變數
+const totalCountEl = document.getElementById('totalCount');
+const scanTableBody = document.querySelector('#scanTable tbody');
+
+let html5QrScanner = null;
+let buffer = []; // 未送出的掃描資料
+let sending = false;
+let timerId = null;
+let isScanning = false; // 【新增旗標】追蹤是否正在掃描
+
 
 let html5QrScanner = null;
 let buffer = []; // 未送出的掃描資料
@@ -55,10 +76,18 @@ let timerId = null;
 // 載入 local cache 的未送出資料
 const LOCAL_KEY = 'qr_scan_offline_buffer_v1';
 function loadLocalBuffer(){
-try{
-const raw = localStorage.getItem(LOCAL_KEY);
-if(raw){ buffer = JSON.parse(raw); appendLog(`從 localStorage 載入 ${buffer.length} 筆`); }
-}catch(e){ console.error(e);} }
+    try{
+        const raw = localStorage.getItem(LOCAL_KEY);
+        if(raw){ 
+            buffer = JSON.parse(raw); 
+            appendLog(`從 localStorage 載入 ${buffer.length} 筆`); 
+        }
+    }catch(e){ console.error(e);} 
+    // 【修改點】載入緩存後更新列表
+    updateScanList(); 
+}
+
+    
 function saveLocalBuffer(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(buffer)); }
 
 
@@ -66,22 +95,43 @@ function appendLog(text){
 logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
 }
 
+function updateScanList(){
+    // 更新總計
+    totalCountEl.textContent = buffer.length;
+
+    // 清空表格
+    scanTableBody.innerHTML = ''; 
+    
+    // 遍歷 buffer，從最新掃描的開始顯示 (反向)
+    for(let i = buffer.length - 1; i >= 0; i--){
+        const item = buffer[i];
+        const row = scanTableBody.insertRow();
+        row.insertCell().textContent = i + 1; // 序號
+        row.insertCell().textContent = item.code; // QR Code 編號
+    }
+}
+
 function enqueue(code){
-const item = {
-code: code,
-driver: driverInput.value || 'unknown',
-seller: sellerSelect.value || '',
-ts: new Date().toISOString()
-};
-// simple session dedupe
-const last = buffer[buffer.length-1];
-if(last && last.code === item.code){ appendLog('忽略重複掃描: '+item.code); return; }
-buffer.push(item);
-saveLocalBuffer();
-appendLog('加入 buffer: '+code+' (buffer='+buffer.length+')');
-
-
-if(buffer.length >= BATCH_SIZE) sendBatch();
+    const item = {
+        code: code,
+        driver: driverInput.value || 'unknown',
+        seller: sellerSelect.value || '',
+        ts: new Date().toISOString()
+    };
+    // simple session dedupe
+    const last = buffer[buffer.length-1];
+    if(last && last.code === item.code)
+        { appendLog('忽略重複掃描: '+item.code); 
+         return; 
+    }
+    buffer.push(item);
+    saveLocalBuffer();
+    // appendLog('加入 buffer: '+code+' (buffer='+buffer.length+')'); // 舊日誌可註解掉
+    appendLog(`🟢 掃到: ${code}`); // 新日誌顯示
+    
+    // 【修改點】呼叫更新列表
+    updateScanList();
+    if(buffer.length >= BATCH_SIZE) sendBatch();
 }
 
 async function sendBatch(){
@@ -182,15 +232,18 @@ if(!sellerSelect.value){
 if(html5QrScanner) return;
 html5QrScanner = new Html5Qrcode("qr-reader");
 html5QrScanner.start({ facingMode: 'environment' }, {
-fps: 10,
-qrbox: {width:250, height:250}
+    fps: 10,
+    qrbox: {width:250, height:250}
 }, (decodedText, decodedResult)=>{
-statusEl.textContent = '掃到: '+decodedText;
-enqueue(decodedText);
+    statusEl.textContent = '掃到: '+decodedText;
+    enqueue(decodedText);
 }, (errorMessage) => {
-// parse errors or no result
+    // parse errors or no result
 }).then(()=>{
-appendLog('相機啟動'); statusEl.textContent='掃描中...';
+    appendLog('相機啟動'); 
+    statusEl.textContent='掃描中...';
+    isScanning = true; // 【修改點】啟動掃描
+    btnSync.disabled = true; // 【修改點】掃描啟動時禁用上傳
 }).catch(err=>{ alert('無法啟動相機: '+err); });
 
 
@@ -198,12 +251,27 @@ startBatchTimer();
 });
 
 btnStop.addEventListener('click', ()=>{
-if(html5QrScanner){ html5QrScanner.stop().then(()=>{ html5QrScanner.clear(); html5QrScanner=null; appendLog('相機已停止'); statusEl.textContent='已停止'; }).catch(e=>console.error(e)); }
+    if(html5QrScanner){
+        html5QrScanner.stop().then(()=>{
+            html5QrScanner.clear(); 
+            html5QrScanner=null; 
+            appendLog('相機已停止'); 
+            statusEl.textContent='已停止';
+            isScanning = false; // 【修改點】停止掃描
+            btnSync.disabled = false; // 【修改點】停止後啟用上傳
+        }).catch(e=>console.error(e)); }
 stopBatchTimer();
 });
 
 
-btnSync.addEventListener('click', ()=>{ sendBatch(); });
+btnSync.addEventListener('click', ()=>{ 
+    // 【修改點】如果正在掃描，彈出警告並返回
+    if(isScanning){
+        alert('請先點擊「停止」按鈕結束掃描作業！');
+        return;
+    }
+    sendBatch();
+});
 
 
 // 初始載入：
