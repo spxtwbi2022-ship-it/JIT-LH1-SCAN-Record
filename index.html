@@ -185,10 +185,14 @@ async function sendBatch(){
         .map((item, index) => ({ item, index }))
         .filter(entry => !entry.item.sent);
 
-    if(pendingBuffer.length === 0) {
+    // if(pendingBuffer.length === 0) {
+    //     appendLog('✅ 沒有待上傳資料。');
+    //     return; 
+    // }
+    / 這裡要使用 indexedPending.length 來判斷
+    if(indexedPending.length === 0) {
         appendLog('✅ 沒有待上傳資料。');
-        return; 
-    }
+        return;
     
     // if(buffer.length === 0) return;
     if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
@@ -209,7 +213,8 @@ async function sendBatch(){
         // headers: {'Content-Type': 'application/json'},
         headers: {'Content-Type': 'text/plain'},
         // 確保您在 enqueue 中已經將 ts 轉換為本地字串，否則這裡使用 UTC 字串
-        body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
+        // body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
+        body: JSON.stringify({ records: batchToSend, api_key: API_KEY || '' })
     });
     
     // 【✅ 新增檢查】即使請求成功，也要確保狀態碼是 200
