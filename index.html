@@ -38,6 +38,7 @@ button{padding:8px 12px}
         <tr style="background: #e7e7e7;">
             <th style="padding: 4px; border: 1px solid #ccc;">#</th>
             <th style="padding: 4px; border: 1px solid #ccc;">掃描編號 (QR Code)</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">狀態</th> </tr>
         </tr>
     </thead>
     <tbody>
@@ -102,6 +103,14 @@ function updateScanList(){
         const row = scanTableBody.insertRow();
         row.insertCell().textContent = i + 1; // 序號
         row.insertCell().textContent = item.code; // QR Code 編號
+
+        // 【新增標記邏輯】如果已上傳，則改變樣式
+        if(item.sent){
+            row.style.backgroundColor = '#d4edda'; // 淺綠色背景
+            row.insertCell().textContent = '✅ 已上傳';
+        } else {
+            row.insertCell().textContent = '⏳ 待上傳';
+        }
     }
 }
 
@@ -126,59 +135,69 @@ function enqueue(code){
     // 【修改點】呼叫更新列表
     updateScanList();
     
-    // ⬇️ 刪除或註解掉這一行，停止自動上傳
-    // if(buffer.length >= BATCH_SIZE) sendBatch();
+    // 自動上傳
+    if(buffer.length >= BATCH_SIZE) sendBatch();
 }
 
 async function sendBatch(){
-if(sending) return;
-if(buffer.length === 0) return;
-if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
-
+    if(sending) return;
+    if(buffer.length === 0) return;
+    if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
+        
+    sending = true;
+    const batch = buffer.slice(0, BATCH_SIZE);
+    try{
+    const resp = await fetch(GAS_ENDPOINT, {
+    method: 'POST',
+    // headers: {'Content-Type': 'application/json'},
+    headers: {'Content-Type': 'text/plain'},
+    body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
+    });
     
-sending = true;
-const batch = buffer.slice(0, BATCH_SIZE);
-try{
-const resp = await fetch(GAS_ENDPOINT, {
-method: 'POST',
-// headers: {'Content-Type': 'application/json'},
-headers: {'Content-Type': 'text/plain'},
-body: JSON.stringify({ records: batch, api_key: API_KEY || '' })
-});
+    // 【✅ 新增檢查】即使請求成功，也要確保狀態碼是 200
+    if (!resp.ok) {
+        // 如果狀態碼是 4xx/5xx，顯示具體狀態碼
+        const errorText = await resp.text();
+        throw new Error(`HTTP 錯誤: ${resp.status} - ${errorText.substring(0, 50)}`);
+    }
+    
+    const j = await resp.json();
+    if(j.status === 'ok'){
+        // ⬇️ 關鍵修改：不從 buffer 中移除已上傳的 batch 數據
 
-// 【✅ 新增檢查】即使請求成功，也要確保狀態碼是 200
-if (!resp.ok) {
-    // 如果狀態碼是 4xx/5xx，顯示具體狀態碼
-    const errorText = await resp.text();
-    throw new Error(`HTTP 錯誤: ${resp.status} - ${errorText.substring(0, 50)}`);
+        // 將已上傳的項目標記為 'SENT'
+        for(let i = 0; i < batch.length; i++){
+            // 找到 buffer 中對應的項目，並添加 sent 屬性
+            buffer[i].sent = true; 
+        }
+        
+        // buffer = buffer.slice(batch.length);
+        
+        // 由於我們不再移除數據，因此整個 buffer 保持不變，只需更新本地儲存
+        saveLocalBuffer();
+        
+        appendLog('上傳成功, 剩餘 buffer='+buffer.length);
+
+        // ⬇️ 成功上傳後，立即更新列表以顯示狀態標記
+        updateScanList();
+        
+    } else {
+    appendLog('後端回傳錯誤: '+JSON.stringify(j));
+    }
+    }catch(err){
+    // 【✅ 修正日誌】顯示具體的錯誤名稱和訊息
+    appendLog(`🔴 上傳失敗，稍後重試。錯誤類型: ${err.name} - ${err.message}`); 
+    console.error(err); 
+    }
+    sending = false;
 }
 
-const j = await resp.json();
-if(j.status === 'ok'){
-buffer = buffer.slice(batch.length);
-saveLocalBuffer();
-appendLog('上傳成功, 剩餘 buffer='+buffer.length);
-} else {
-appendLog('後端回傳錯誤: '+JSON.stringify(j));
+⬇️ 定時上傳
+function startBatchTimer(){
+stopBatchTimer();
+timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
 }
-// }catch(err){
-// console.error(err); appendLog('上傳失敗，稍後重試');
-// }
-}catch(err){
-// 【✅ 修正日誌】顯示具體的錯誤名稱和訊息
-appendLog(`🔴 上傳失敗，稍後重試。錯誤類型: ${err.name} - ${err.message}`); 
-console.error(err); 
-}
-sending = false;
-}
-
-// ⬇️ 刪除這個函式 (不再需要定時上傳)
-// function startBatchTimer(){
-// stopBatchTimer();
-// timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
-// }
-// ⬇️ 刪除這個函式
-// function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
+function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
 
 // 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
 async function loadSellers() { // 函式名稱改為 loadSellers
@@ -244,8 +263,7 @@ html5QrScanner.start({ facingMode: 'environment' }, {
     btnSync.disabled = true; // 【修改點】掃描啟動時禁用上傳
 }).catch(err=>{ alert('無法啟動相機: '+err); });
 
-// ⬇️ 刪除或註解掉這一行
-// startBatchTimer();
+startBatchTimer();
 });
 
 btnStop.addEventListener('click', ()=>{
@@ -258,8 +276,8 @@ btnStop.addEventListener('click', ()=>{
             isScanning = false; // 【修改點】停止掃描
             btnSync.disabled = false; // 【修改點】停止後啟用上傳
         }).catch(e=>console.error(e)); }
-// ⬇️ 刪除或註解掉這一行
-// stopBatchTimer();
+
+stopBatchTimer();
 });
 
 
