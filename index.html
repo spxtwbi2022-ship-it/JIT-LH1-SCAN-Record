@@ -75,9 +75,27 @@ function loadLocalBuffer(){
         const raw = localStorage.getItem(LOCAL_KEY);
         if(raw){ 
             buffer = JSON.parse(raw); 
+
+            // 【修復點：強制檢查數據完整性】
+            // 如果 buffer 包含任何不是物件的元素，或者長度為零，就清除它。
+            if (buffer.length === 0 || typeof buffer[0] !== 'object' || buffer[0] === null) {
+                buffer = [];
+                localStorage.removeItem(LOCAL_KEY); // 清除損壞的緩存
+                appendLog('⚠️ 偵測到無效緩存，已清除！');
+                updateScanList(); 
+                return;
+            }
+            
             appendLog(`從 localStorage 載入 ${buffer.length} 筆`); 
         }
-    }catch(e){ console.error(e);} 
+    }catch(e){ 
+        console.error(e);
+        // 如果 JSON.parse 失敗 (數據損壞)，清除緩存
+        buffer = [];
+        localStorage.removeItem(LOCAL_KEY); 
+        appendLog('⚠️ localStorage 數據解析失敗，已清除！');
+    }
+    
     // 【修改點】載入緩存後更新列表
     updateScanList(); 
 }
