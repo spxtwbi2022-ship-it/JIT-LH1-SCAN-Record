@@ -348,6 +348,387 @@ loadLocalBuffer(); // 恢復離線緩存
 loadSellers(); // 載入賣家清單
 // 自動重試上傳(網路復原時)
 window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>掃箱系統</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body{font-family:system-ui, -apple-system, 'Noto Sans TC', sans-serif; padding:12px}
+#controls{display:flex; gap:8px; margin-bottom:8px}
+#log{white-space:pre-wrap; max-height:200px; overflow:auto; background:#f7f7f7; padding:8px}
+button{padding:8px 12px}
+</style>
+</head>
+<body>
+<h2>司機掃箱系統</h2>
+
+<div id="controls">
+<label>Driver ID: <input id="driverId" placeholder="輸入司機編號" /></label>
+<!-- <label>Seller: <select id="seller" placeholder="賣家名稱/編號 (可選)" /></label> -->
+<label>Seller: 
+    <select id="seller">
+        <option value="">-- 載入中... --</option>
+    </select>
+</label>
+<button id="btnStart">啟動相機掃描</button>
+<button id="btnStop">停止</button>
+<button id="btnSync">立即上傳</button>
+</div>
+
+
+<div id="qr-reader" style="width:100%; max-width:480px; margin-bottom:8px"></div>
+<div id="status">尚未開始掃描</div>
+<h4>掃描紀錄（session）</h4>
+<!-- <h4>當前作業總計：<span id="totalCount">0</span> 筆</h4> -->
+<h4>
+    總計掃描：<span id="totalCount">0</span> 筆 | 
+    已上傳：<span id="uploadedCount">0</span> 筆 |
+    待上傳：<span id="pendingCount">0</span> 筆
+</h4>
+<table id="scanTable" style="width:100%; border-collapse: collapse; margin-bottom: 12px; border: 1px solid #ccc;">
+    <thead>
+        <tr style="background: #e7e7e7;">
+            <th style="padding: 4px; border: 1px solid #ccc;">#</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">賣家</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">掃描編號 (QR Code)</th>
+            <th style="padding: 4px; border: 1px solid #ccc;">狀態</th> </tr>
+        </tr>
+    </thead>
+    <tbody>
+        </tbody>
+</table>
+<div id="log"></div>
+
+<script src="config.js"></script>
+<script>
+// CONFIG from config.js: GAS_ENDPOINT, BATCH_SIZE, BATCH_TIMEOUT_MS
+const driverInput = document.getElementById('driverId');
+// const sellerInput = document.getElementById('seller');
+const sellerSelect = document.getElementById('seller');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
+const btnSync = document.getElementById('btnSync');
+const logEl = document.getElementById('log');
+const statusEl = document.getElementById('status');
+
+// 掃描相關變數
+const totalCountEl = document.getElementById('totalCount');
+const scanTableBody = document.querySelector('#scanTable tbody');
+
+// ⬇️ 新增這兩行
+const uploadedCountEl = document.getElementById('uploadedCount'); 
+const pendingCountEl = document.getElementById('pendingCount');
+
+let html5QrScanner = null;
+let buffer = []; // 未送出的掃描資料
+let sending = false;
+let timerId = null;
+let isScanning = false; // 【新增旗標】追蹤是否正在掃描
+
+// 載入 local cache 的未送出資料
+const LOCAL_KEY = 'qr_scan_offline_buffer_v1';
+
+function updateScanList(){
+    // ⬇️ 【修改點】新增計數邏輯
+    let uploadedCount = 0;
+    
+    // 更新總計
+    totalCountEl.textContent = buffer.length;
+
+    // 清空表格
+    scanTableBody.innerHTML = ''; 
+    
+    // 遍歷 buffer，從最新掃描的開始顯示 (反向)
+    for(let i = buffer.length - 1; i >= 0; i--){
+        const item = buffer[i];
+        const row = scanTableBody.insertRow();
+        row.insertCell().textContent = i + 1; // 序號
+        row.insertCell().textContent = item.seller; // 賣家名稱
+        row.insertCell().textContent = item.code; // QR Code 編號
+        // 處理 sent 狀態
+        const statusCell = row.insertCell();
+
+        if(item.sent){
+            row.style.backgroundColor = '#d4edda'; // 淺綠色背景
+            statusCell.textContent = '✅ 已上傳';
+            uploadedCount++; // 統計已上傳筆數
+        } else {
+            statusCell.textContent = '⏳ 待上傳';
+        }
+    }
+    // ⬇️ 【修改點】更新三個計數器
+    uploadedCountEl.textContent = uploadedCount;
+    pendingCountEl.textContent = buffer.length - uploadedCount;
+}
+    
+function loadLocalBuffer(){
+    try{
+        const raw = localStorage.getItem(LOCAL_KEY);
+        if(raw){ 
+            buffer = JSON.parse(raw); 
+            appendLog(`從 localStorage 載入 ${buffer.length} 筆`); 
+        }
+    }catch(e){ console.error(e);} 
+    // 【修改點】載入緩存後更新列表
+    updateScanList(); 
+}
+
+    
+function saveLocalBuffer(){ localStorage.setItem(LOCAL_KEY, JSON.stringify(buffer)); }
+
+
+function appendLog(text){
+logEl.textContent = new Date().toLocaleTimeString() + ' - ' + text + '\n' + logEl.textContent;
+}
+
+function enqueue(code){
+    const now = new Date(); // 創建 Date 物件
+
+    // ⬇️ 【關鍵修改】將時間戳直接轉換成本地時區字串
+    const localTimeString = now.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false, // 24 小時制
+        timeZone: 'Asia/Taipei' // 確保是台灣時間
+    });
+    
+    const item = {
+        code: code,
+        driver: driverInput.value || 'unknown',
+        seller: sellerSelect.value || '',
+        // ⬇️ 將 ts 欄位儲存為本地化字串 (您希望寫入 Sheet 的格式)
+        ts: localTimeString
+        // ts: new Date().toISOString()
+    };
+    // simple session dedupe
+    const last = buffer[buffer.length-1];
+    if(last && last.code === item.code)
+        { appendLog('忽略重複掃描: '+item.code); 
+         return; 
+    }
+    buffer.push(item);
+    saveLocalBuffer();
+    // appendLog('加入 buffer: '+code+' (buffer='+buffer.length+')'); // 舊日誌可註解掉
+    appendLog(`🟢 掃到: ${code}`); // 新日誌顯示
+    
+    // 【修改點】呼叫更新列表
+    updateScanList();
+    if(buffer.length >= BATCH_SIZE) sendBatch();
+}
+
+// 【最終版本：修復連發、未定義變數和傳送錯誤】
+async function sendBatch(){
+    if(sending) return;
+    
+    // ⬇️ 【步驟 1：建立包含索引的待上傳清單】
+    const indexedPending = buffer
+        .map((item, index) => ({ item, index }))
+        .filter(entry => !entry.item.sent);
+
+    // 檢查是否有待上傳資料
+    if(indexedPending.length === 0) {
+        appendLog('✅ 沒有待上傳資料。');
+        return; 
+    }
+    
+    if(!navigator.onLine){ appendLog('離線，暫不送出'); return; }
+    
+    sending = true;
+    
+    // 從帶有索引的待上傳清單中取 batch 批次
+    const batchEntries = indexedPending.slice(0, BATCH_SIZE); 
+    
+    // 準備傳送到後端的數據 (只包含 item)
+    const batchToSend = batchEntries.map(entry => entry.item);
+
+    try{
+        const resp = await fetch(GAS_ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        // 傳送正確的 batchToSend
+        body: JSON.stringify({ records: batchToSend, api_key: API_KEY || '' })
+    });
+    
+    // 【檢查 HTTP 狀態碼】
+    if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(`HTTP 錯誤: ${resp.status} - ${errorText.substring(0, 50)}`);
+    }
+
+    const j = await resp.json();
+    if(j.status === 'ok'){
+        
+        // 【使用索引直接在原 buffer 上標記 sent=true】
+        batchEntries.forEach(entry => {
+            buffer[entry.index].sent = true;
+        });
+        
+        saveLocalBuffer();
+    
+        const remainingToUpload = buffer.filter(item => !item.sent).length; 
+        // 修正日誌，使用 batchToSend.length 顯示成功上傳筆數
+        appendLog(`✅ 上傳成功 ${batchToSend.length} 筆, 剩餘待上傳: ${remainingToUpload} 筆 (總紀錄數: ${buffer.length})`);
+        
+        updateScanList();
+
+        // 【連發機制】
+        if (remainingToUpload > 0) {
+            setTimeout(sendBatch, 0); 
+        }
+        
+        } else {
+        appendLog('後端回傳錯誤: '+JSON.stringify(j));
+    }
+    }catch(err){
+        appendLog(`🔴 上傳失敗，稍後重試。錯誤類型: ${err.name} - ${err.message}`); 
+        console.error(err); 
+    } finally {
+        // 確保無論成功或失敗，上傳狀態旗標都被重置
+        sending = false;
+    }
+}
+
+function startBatchTimer(){
+stopBatchTimer();
+timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
+}
+function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
+
+// 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
+async function loadSellers() { // 函式名稱改為 loadSellers
+    appendLog('嘗試載入賣家清單...');
+    try {
+        // 使用 doGet 接口，新增 action 參數
+        const sellerEndpoint = GAS_ENDPOINT + '?action=getSellers'; // 變數名稱與 action 參數修改
+        const resp = await fetch(sellerEndpoint);
+        
+        // 檢查 HTTP 狀態碼
+        if (!resp.ok) {
+            throw new Error(`HTTP 錯誤: ${resp.status}`);
+        }
+        
+        const j = await resp.json();
+        
+        // 清空下拉選單
+        sellerSelect.innerHTML = '<option value="">-- 請選擇賣家 --</option>'; 
+
+        if (j.status === 'ok' && j.sellers && j.sellers.length > 0) {
+            j.sellers.forEach(seller => { // 遍歷變數名稱修改
+                const option = document.createElement('option');
+                option.value = seller;
+                option.textContent = seller;
+                sellerSelect.appendChild(option);
+            });
+            appendLog(`成功載入 ${j.sellers.length} 個賣家`);
+        } else {
+            // 如果清單為空或錯誤
+            appendLog('賣家清單載入失敗或為空: ' + (j.message || '請確認 GAS 設置'));
+        }
+    } catch (err) {
+        appendLog('載入賣家清單時發生網路錯誤');
+        console.error(err);
+        sellerSelect.innerHTML = '<option value="">-- 載入錯誤 --</option>'; 
+    }
+}
+
+btnStart.addEventListener('click', ()=>{
+// 【調整檢查邏輯】 必須同時輸入 Driver ID 且選擇 Seller
+if(!driverInput.value){ 
+    alert('請輸入 Driver ID'); 
+    return; 
+}
+if(!sellerSelect.value){ 
+    alert('請選擇賣家 Seller'); 
+    return; 
+}
+if(html5QrScanner) return;
+html5QrScanner = new Html5Qrcode("qr-reader");
+html5QrScanner.start({ facingMode: 'environment' }, {
+    fps: 10,
+    qrbox: {width:250, height:250}
+}, (decodedText, decodedResult)=>{
+    statusEl.textContent = '掃到: '+decodedText;
+    enqueue(decodedText);
+}, (errorMessage) => {
+    // parse errors or no result
+}).then(()=>{
+    appendLog('相機啟動'); 
+    statusEl.textContent='掃描中...';
+    isScanning = true; // 【修改點】啟動掃描
+    btnSync.disabled = true; // 【修改點】掃描啟動時禁用上傳
+}).catch(err=>{ alert('無法啟動相機: '+err); });
+
+
+startBatchTimer();
+});
+
+btnStop.addEventListener('click', ()=>{
+    if(html5QrScanner){
+        html5QrScanner.stop().then(()=>{
+            html5QrScanner.clear(); 
+            html5QrScanner=null; 
+            appendLog('相機已停止'); 
+            statusEl.textContent='已停止';
+            isScanning = false; // 【修改點】停止掃描
+            btnSync.disabled = false; // 【修改點】停止後啟用上傳
+        }).catch(e=>console.error(e)); }
+stopBatchTimer();
+});
+
+
+btnSync.addEventListener('click', ()=>{ 
+    // 【修改點】如果正在掃描，彈出警告並返回
+    if(isScanning){
+        alert('請先點擊「停止」按鈕結束掃描作業！');
+        return;
+    }
+    sendBatch();
+});
+
+
+// 初始載入：
+loadLocalBuffer(); // 恢復離線緩存
+loadSellers(); // 載入賣家清單
+// 自動重試上傳(網路復原時)
+window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
+// 【新增功能：切換賣家時清空所有紀錄】
+sellerSelect.addEventListener('change', () => {
+    // 只有當 sellerSelect.value 有值 (即選擇了一個賣家) 時才執行清空
+    // 或是當它從有值變成無值時，也清空
+    if (buffer.length > 0) {
+        // 清空 buffer
+        buffer = []; 
+        
+        // 清空本地儲存
+        localStorage.removeItem(LOCAL_KEY);
+        
+        // 更新表格和計數器
+        updateScanList();
+        
+        appendLog('🔄 賣家切換，掃描紀錄已清空。');
+        
+        // 如果計時器正在運行，停止它
+        stopBatchTimer(); 
+        
+        // 確保上傳按鈕可用 (如果相機已停止)
+        if (!isScanning) {
+            btnSync.disabled = false;
+        }
+    }
+});
+    
+</script>
+</body>
+</html>
+
+
 </script>
 </body>
 </html>
