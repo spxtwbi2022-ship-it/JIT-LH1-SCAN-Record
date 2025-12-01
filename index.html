@@ -147,6 +147,17 @@ function appendLog(text){
 }
 
 function enqueue(code){
+    // ⬇️ 【新增：檢查所有歷史紀錄】
+    // 使用 Array.prototype.some() 檢查 buffer 中是否已存在相同編號 (code) 的紀錄
+    const isDuplicate = buffer.some(item => item.code === code); 
+    
+    if(isDuplicate){
+        // 如果發現重複，則記錄日誌並退出，不將其加入 buffer
+        appendLog(`⚠️ 忽略重複掃描: ${code} (已在歷史紀錄中)`); 
+        return; 
+    }
+    // ⬆️ 【結束：檢查所有歷史紀錄】
+    
     const now = new Date(); // 創建 Date 物件
 
     // ⬇️ 【關鍵修改】將時間戳直接轉換成本地時區字串
@@ -169,12 +180,12 @@ function enqueue(code){
         ts: localTimeString
         // ts: new Date().toISOString()
     };
-    // simple session dedupe
-    const last = buffer[buffer.length-1];
-    if(last && last.code === item.code)
-        { appendLog('忽略重複掃描: '+item.code); 
-         return; 
-    }
+    // simple session dedupe // 由於我們已經檢查了所有歷史紀錄，不需要原來的 "simple session dedupe" 檢查。
+    // const last = buffer[buffer.length-1];
+    // if(last && last.code === item.code)
+    //     { appendLog('忽略重複掃描: '+item.code); 
+    //      return; 
+    // }
     buffer.push(item);
     saveLocalBuffer();
     // appendLog('加入 buffer: '+code+' (buffer='+buffer.length+')'); // 舊日誌可註解掉
