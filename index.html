@@ -314,7 +314,7 @@ async function loadTrucks() {
 }
 
 // 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
-async function loadSellers() { 
+async function loadSellers(truckNumber) { 
     // appendLog('嘗試載入賣家清單...');
     sellerSelect.innerHTML = '<option value="">-- 載入中... --</option>';
     appendLog(`嘗試載入專車 [${truckNumber}] 的賣家清單...`);
@@ -424,7 +424,8 @@ whTruckNumberSelect.addEventListener('change', () => {
 
 // 初始載入：
 loadLocalBuffer(); // 恢復離線緩存
-loadSellers(); // 載入賣家清單
+loadTrucks(); // ✅ 修正：先載入專車清單
+// loadSellers(); // 載入賣家清單
 // 自動重試上傳(網路復原時)
 window.addEventListener('online', ()=>{ appendLog('網路回復，開始上傳'); sendBatch(); });
 // 【修正區域 2: 新增賣家切換事件，清空資料】
