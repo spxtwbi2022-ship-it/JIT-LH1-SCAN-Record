@@ -155,6 +155,9 @@ function appendLog(text){
 }
 
 function enqueue(code){
+    // 【新增】播放音效
+    playBeep();
+    
     // ⬇️ 【新增：檢查所有歷史紀錄】
     // 使用 Array.prototype.some() 檢查 buffer 中是否已存在相同編號 (code) 的紀錄
     const isDuplicate = buffer.some(item => item.code === code); 
@@ -196,9 +199,6 @@ function enqueue(code){
     //     { appendLog('忽略重複掃描: '+item.code); 
     //      return; 
     // }
-    
-    // 【新增】播放音效
-    playBeep();
     
     buffer.push(item);
     saveLocalBuffer();
