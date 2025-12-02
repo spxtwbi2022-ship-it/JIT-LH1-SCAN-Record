@@ -74,9 +74,11 @@ const statusEl = document.getElementById('status');
 const totalCountEl = document.getElementById('totalCount');
 const scanTableBody = document.querySelector('#scanTable tbody');
 
-// ⬇️ 新增這兩行
 const uploadedCountEl = document.getElementById('uploadedCount'); 
 const pendingCountEl = document.getElementById('pendingCount');
+
+// 【新增】音效相關變數和函式
+let audio = null;
 
 let html5QrScanner = null;
 let buffer = []; // 未送出的掃描資料
@@ -194,6 +196,10 @@ function enqueue(code){
     //     { appendLog('忽略重複掃描: '+item.code); 
     //      return; 
     // }
+    
+    // 【新增】播放音效
+    playBeep();
+    
     buffer.push(item);
     saveLocalBuffer();
     // appendLog('加入 buffer: '+code+' (buffer='+buffer.length+')'); // 舊日誌可註解掉
@@ -348,6 +354,30 @@ async function loadSellers(truckNumber) {
         console.error(err);
         sellerSelect.innerHTML = '<option value="">-- 載入錯誤 --</option>'; 
     }
+}
+
+function playBeep() {
+    // 檢查瀏覽器是否支援 Audio
+    if (typeof Audio === 'undefined') {
+        console.warn('Audio API is not supported.');
+        return;
+    }
+
+    if (!audio) {
+        // 使用一個非常短促、標準的嗶嗶聲MP3文件 (您可以替換為自己的音頻路徑)
+        // 為了確保與所有瀏覽器相容，使用 base64 數據會更可靠，但這裡示範使用最常見的檔案類型
+        // 注意：這裡使用了一個常見的模擬嗶嗶聲的網路資源作為範例。
+        audio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
+        // 設置音量，避免聲音過大
+        audio.volume = 0.5; 
+    }
+    
+    // 重新載入並播放 (確保在多次掃描中都能響起)
+    audio.currentTime = 0; // 從頭開始播放
+    audio.play().catch(error => {
+        // 捕捉瀏覽器可能因權限問題阻止播放的錯誤
+        console.warn("無法播放音頻 (可能需要用戶互動):", error);
+    });
 }
 
 btnStart.addEventListener('click', ()=>{
