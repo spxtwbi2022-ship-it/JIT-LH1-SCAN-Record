@@ -16,12 +16,17 @@ button{padding:8px 12px}
 <h2>司機掃箱系統</h2>
 
 <div id="controls">
-<label>Driver ID: <input id="driverId" placeholder="輸入司機編號" /></label>
+<!-- <label>Driver ID: <input id="driverId" placeholder="輸入司機編號" /></label> -->
 <!-- <label>Seller: <select id="seller" placeholder="賣家名稱/編號 (可選)" /></label> -->
-<label>Seller: 
-    <select id="seller">
-        <option value="">-- 載入中... --</option>
+<label>專車編號 (Truck): 
+    <select id="whTruckNumber">
+        <option value="">-- 載入專車中... --</option>
     </select>
+</label>
+<label>Seller: 
+    <select id="seller">
+        <option value="">-- 請先選擇專車 --</option>
+    </select>
 </label>
 <button id="btnStart">啟動相機掃描</button>
 <button id="btnStop">停止</button>
@@ -55,8 +60,9 @@ button{padding:8px 12px}
 <script src="config.js"></script>
 <script>
 // CONFIG from config.js: GAS_ENDPOINT, BATCH_SIZE, BATCH_TIMEOUT_MS
-const driverInput = document.getElementById('driverId');
+// const driverInput = document.getElementById('driverId');
 // const sellerInput = document.getElementById('seller');
+const whTruckNumberSelect = document.getElementById('whTruckNumber'); // 👈 新增專車下拉選單變數
 const sellerSelect = document.getElementById('seller');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
@@ -174,7 +180,9 @@ function enqueue(code){
     
     const item = {
         code: code,
-        driver: driverInput.value || 'unknown',
+        // driver: driverInput.value || 'unknown',
+        // ⬇️ 這裡修改為傳送專車編號
+        driver: whTruckNumberSelect.value || 'unknown',
         seller: sellerSelect.value || '',
         // ⬇️ 將 ts 欄位儲存為本地化字串 (您希望寫入 Sheet 的格式)
         ts: localTimeString
@@ -274,15 +282,46 @@ timerId = setInterval(()=>{ sendBatch(); }, BATCH_TIMEOUT_MS);
 }
 function stopBatchTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
 
-// 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
-async function loadSellers() { // 函式名稱改為 loadSellers
-    appendLog('嘗試載入賣家清單...');
+// 【新增函式】 從 GAS 獲取專車清單
+async function loadTrucks() {
+    appendLog('嘗試載入專車清單...');
     try {
-        // 使用 doGet 接口，新增 action 參數
-        const sellerEndpoint = GAS_ENDPOINT + '?action=getSellers'; // 變數名稱與 action 參數修改
+        const truckEndpoint = GAS_ENDPOINT + '?action=getTrucks';
+        const resp = await fetch(truckEndpoint);
+        if (!resp.ok) {
+            throw new Error(`HTTP 錯誤: ${resp.status}`);
+        }
+        const j = await resp.json();
+        
+        whTruckNumberSelect.innerHTML = '<option value="">-- 請選擇專車 --</option>';
+
+        if (j.status === 'ok' && j.trucks && j.trucks.length > 0) {
+            j.trucks.forEach(truck => {
+                const option = document.createElement('option');
+                option.value = truck;
+                option.textContent = truck;
+                whTruckNumberSelect.appendChild(option);
+            });
+            appendLog(`成功載入 ${j.trucks.length} 個專車編號`);
+        } else {
+            appendLog('專車清單載入失敗或為空: ' + (j.message || '請確認 GAS 設置'));
+        }
+    } catch (err) {
+        appendLog('載入專車清單時發生網路錯誤');
+        console.error(err);
+        whTruckNumberSelect.innerHTML = '<option value="">-- 載入錯誤 --</option>';
+    }
+}
+
+// 【新增函式】 從 GAS 獲取賣家清單並填充下拉選單
+async function loadSellers() { 
+    // appendLog('嘗試載入賣家清單...');
+    sellerSelect.innerHTML = '<option value="">-- 載入中... --</option>';
+    appendLog(`嘗試載入專車 [${truckNumber}] 的賣家清單...`);
+    try {
+        const sellerEndpoint = `${GAS_ENDPOINT}?action=getSellers&truck=${encodeURIComponent(truckNumber)}`;
         const resp = await fetch(sellerEndpoint);
         
-        // 檢查 HTTP 狀態碼
         if (!resp.ok) {
             throw new Error(`HTTP 錯誤: ${resp.status}`);
         }
@@ -299,7 +338,7 @@ async function loadSellers() { // 函式名稱改為 loadSellers
                 option.textContent = seller;
                 sellerSelect.appendChild(option);
             });
-            appendLog(`成功載入 ${j.sellers.length} 個賣家`);
+            appendLog(`專車 [${truckNumber}] 成功載入 ${j.sellers.length} 個賣家`);
         } else {
             // 如果清單為空或錯誤
             appendLog('賣家清單載入失敗或為空: ' + (j.message || '請確認 GAS 設置'));
@@ -312,14 +351,14 @@ async function loadSellers() { // 函式名稱改為 loadSellers
 }
 
 btnStart.addEventListener('click', ()=>{
-// 【調整檢查邏輯】 必須同時輸入 Driver ID 且選擇 Seller
-if(!driverInput.value){ 
-    alert('請輸入 Driver ID'); 
-    return; 
+// 必須同時選擇 專車編號 且選擇 Seller
+if(!whTruckNumberSelect.value){ 
+    alert('請選擇專車編號 (Truck)'); 
+    return; 
 }
-if(!sellerSelect.value){ 
-    alert('請選擇賣家 Seller'); 
-    return; 
+if(!sellerSelect.value){ 
+    alert('請選擇賣家 Seller'); 
+    return; 
 }
 if(html5QrScanner) return;
 html5QrScanner = new Html5Qrcode("qr-reader");
@@ -363,6 +402,23 @@ btnSync.addEventListener('click', ()=>{
         return;
     }
     sendBatch();
+});
+
+// 【新增事件：選擇專車編號後，自動載入賣家清單】
+whTruckNumberSelect.addEventListener('change', () => {
+    const selectedTruck = whTruckNumberSelect.value;
+    if (selectedTruck) {
+        // 清空 sellerSelect，並觸發 loadSellers
+        sellerSelect.innerHTML = '<option value="">-- 載入中... --</option>';
+        loadSellers(selectedTruck);
+    } else {
+        sellerSelect.innerHTML = '<option value="">-- 請先選擇專車 --</option>';
+    }
+    // 此外，切換專車/賣家時清空 buffer 的邏輯也應在這裡觸發
+    if (buffer.length > 0) {
+        // 觸發切換賣家清空資料的邏輯
+        sellerSelect.dispatchEvent(new Event('change')); 
+    }
 });
 
 
