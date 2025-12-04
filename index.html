@@ -589,7 +589,14 @@ btnStop.addEventListener('click', ()=>{
     }
     // 停止刷槍模式
     if (isScannerMode) {
-        stopScannerMode();
+        // stopScannerMode();
+        // 停止刷槍模式 (邏輯展開，確保執行)
+        isScannerMode = false;
+        btnSync.disabled = false;
+        document.removeEventListener('keydown', handleScannerInput);
+        scannerBuffer = '';
+        if (scannerTimer) clearTimeout(scannerTimer);
+        appendLog('刷槍掃描模式強制停止完成');
     }
     
     stopBatchTimer();
