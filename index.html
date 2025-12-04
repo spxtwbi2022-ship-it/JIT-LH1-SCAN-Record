@@ -304,17 +304,15 @@ const SCANNER_TIMEOUT_MS = 50;
 function handleScannerInput(event) {
     // 1. 只有在刷槍模式啟動時才執行
     if (!isScannerMode) return;
-    // **【新增這行】** 檢查是否收到任何按鍵事件
-    appendLog(`[除錯] 收到 KeyDown: Key=${event.key}, Code=${event.code}, Length=${event.key.length}`);
 
-    // --- 【修改處】新增除錯 Log 來捕獲被忽略的功能鍵 ---
-    const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
-    if (isFiltered) {
-        appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
-    }
+    // --- 【修改處】新增除錯 Log 來捕獲被忽略的功能鍵 ---檢查是否收到任何按鍵事件
+    // const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
+    // if (isFiltered) {
+    //     appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
+    // }
     
-    // 2. 忽略功能鍵
-    if (event.key.length !== 1 && event.key !== 'Enter') return; 
+    // 2. 不要看功能鍵
+    // if (event.key.length !== 1 && event.key !== 'Enter') return; 
 
     // 3. 重置計時器：每一次按鍵都重置，確保在短時間內完成的輸入被視為一個條碼
     if (scannerTimer) clearTimeout(scannerTimer);
@@ -336,6 +334,15 @@ function handleScannerInput(event) {
              appendLog('⚠️ [刷槍] 收到 Enter，但緩衝區為空，忽略。');
         }
     } else {
+
+    // **【新增邏輯】**：如果不是 Enter 鍵，檢查是否為有效字符，然後累積
+    else {
+        // 忽略長度大於 1 的功能鍵，因為它們通常不包含條碼數據
+        if (event.key.length > 1) {
+            // 這會捕獲到 TVantennaCable 等鍵，並直接忽略其數據，但不會清空緩衝區
+            appendLog(`⚠️ [刷槍] 忽略長度 > 1 的功能鍵: ${event.key}`);
+            return;
+        }
         // 5. 累積字符
         scannerBuffer += event.key;
 
@@ -345,9 +352,19 @@ function handleScannerInput(event) {
         // 6. 設定計時器：如果在 50ms 內沒有新的輸入，則清空緩衝區 (防止手動打字被誤認為條碼)
         scannerTimer = setTimeout(() => {
             if (scannerBuffer) {
-                appendLog(`[刷槍] 輸入超時，緩衝區清空: ${scannerBuffer}`);
+                // 如果超時，表示刷槍缺少 Enter，我們在這裡將數據強行結算。
+                const code = scannerBuffer.trim();
+                scannerBuffer = '';
+                
+                // 只有在超時且 code 有內容時才結算並報警
+                if (code) {
+                    statusEl.textContent = '掃到 (超時): ' + code;
+                    enqueue(code);
+                    appendLog(`🟠 [刷槍超時結算] ⚠️ 缺少 Enter！強行結算代碼: ${code}`);
+                } else {
+                    appendLog(`[刷槍] 輸入超時，緩衝區清空: (無數據)`);
+                }
             }
-            scannerBuffer = ''; 
         }, SCANNER_TIMEOUT_MS);
     }
 }
