@@ -340,7 +340,7 @@ function handleScannerInput(event) {
         if (event.key.length > 1) {
             // 這會捕獲到 TVantennaCable 等鍵，並直接忽略其數據，但不會清空緩衝區
             appendLog(`⚠️ [刷槍] 忽略長度 > 1 的功能鍵: ${event.key}`);
-            return;
+            return;}
 
         // 5. 累積字符：這裡將會累積 'T', 'V', 'a', 'n', 't', 'e', 'n', 'n', 'a', 'C', 'a', 'b', 'l', 'e' 等所有字符
         scannerBuffer += event.key;
