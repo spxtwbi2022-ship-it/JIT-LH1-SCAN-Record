@@ -321,10 +321,18 @@ function handleScannerInput(event) {
         if (code) {
             statusEl.textContent = '掃到: ' + code;
             enqueue(code); // 傳送給現有的處理邏輯
+            // **【新增除錯點 A】** 輸出成功處理的 Log
+            appendLog(`[刷槍成功] 處理代碼: ${code}`); 
+        } else {
+             // **【新增除錯點 B】** 輸出空的 Enter Log
+             appendLog('⚠️ [刷槍] 收到 Enter，但緩衝區為空，忽略。');
         }
     } else {
         // 5. 累積字符
         scannerBuffer += event.key;
+
+        // **【新增除錯點 C】** 即時輸出累積的字符和緩衝區
+        appendLog(`[刷槍輸入中] 鍵: ${event.key}, 緩衝區: ${scannerBuffer}`);
         
         // 6. 設定計時器：如果在 50ms 內沒有新的輸入，則清空緩衝區 (防止手動打字被誤認為條碼)
         scannerTimer = setTimeout(() => {
