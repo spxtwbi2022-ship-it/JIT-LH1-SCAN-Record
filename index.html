@@ -700,17 +700,24 @@ function startScannerMode() {
     // 監聽 input 事件（接收完整輸入）
         scannerInputField.addEventListener('input', (e) => {
             const value = e.target.value;
+
+            // 【新增除錯】記錄每次輸入事件
+            appendLog(`🔍 [刷槍輸入] 當前值: "${value}" (長度: ${value.length})`);
             
             if (scannerTimer) clearTimeout(scannerTimer);
             
             scannerTimer = setTimeout(() => {
                 const code = scannerInputField.value.trim();
+                appendLog(`⏱️ [刷槍超時觸發] 最終值: "${code}" (長度: ${code.length})`);
                 if (code) {
                     statusEl.textContent = '掃到: ' + code;
                     enqueue(code);
-                    appendLog(`✅ [刷槍] ${code}`);
+                    appendLog(`✅ [刷槍成功] ${code}`);
+                } else {
+                    appendLog(`⚠️ [刷槍失敗] 輸入框為空或僅有空白`);
                 }
                 scannerInputField.value = '';
+
             }, SCANNER_TIMEOUT_MS);
         });
         
