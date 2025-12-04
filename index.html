@@ -301,24 +301,100 @@ let scannerTimer = null; // 用於判斷輸入結束
 // 條碼輸入結束的延遲時間 (ms)，刷槍輸入通常很快，這個延遲足夠區分手動輸入
 const SCANNER_TIMEOUT_MS = 250; 
 
+// 【新增】隱藏輸入框用於接收刷槍輸入（繞過輸入法）
+let scannerInputField = null;
+
+// function handleScannerInput(event) {
+//     // 1. 只有在刷槍模式啟動時才執行
+//     if (!isScannerMode) return;
+
+//     // --- 【修改處】新增除錯 Log 來捕獲被忽略的功能鍵 ---檢查是否收到任何按鍵事件
+//     const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
+//     if (isFiltered) {
+//         appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
+//     }
+    
+//     // 2. 不要看功能鍵
+//     // if (event.key.length !== 1 && event.key !== 'Enter') return; 
+
+//     // 3. 重置計時器：每一次按鍵都重置，確保在短時間內完成的輸入被視為一個條碼
+//     if (scannerTimer) clearTimeout(scannerTimer);
+
+//     // 4. 檢查是否為條碼結束符號 (通常是 Enter)
+//     if (event.key === 'Enter') {
+//         event.preventDefault(); // 阻止換行或表單提交
+        
+//         const code = scannerBuffer.trim();
+//         scannerBuffer = ''; // 清空緩衝區
+        
+//         if (code) {
+//             statusEl.textContent = '掃到: ' + code;
+//             enqueue(code); // 傳送給現有的處理邏輯
+//             // **【新增除錯點 A】** 輸出成功處理的 Log
+//             appendLog(`[刷槍成功] 處理代碼: ${code}`); 
+//         } else {
+//              // **【新增除錯點 B】** 輸出空的 Enter Log
+//              appendLog('⚠️ [刷槍] 收到 Enter，但緩衝區為空，忽略。');
+//         }
+//     } 
+//     // **【新增邏輯】**：如果不是 Enter 鍵，檢查是否為有效字符，然後累積
+//     else {
+//         // 忽略長度大於 1 的功能鍵，因為它們通常不包含條碼數據
+//         if (event.key.length > 1) {
+//             // 這會捕獲到 TVantennaCable 等鍵，並直接忽略其數據，但不會清空緩衝區
+//             appendLog(`⚠️ [刷槍] 忽略長度 > 1 的功能鍵: ${event.key}`);
+//             return;}
+
+//         // 5. 累積字符：這裡將會累積 'T', 'V', 'a', 'n', 't', 'e', 'n', 'n', 'a', 'C', 'a', 'b', 'l', 'e' 等所有字符
+//         scannerBuffer += event.key;
+
+//         // 【新增除錯點 C】 即時輸出累積的字符和緩衝區
+//         appendLog(`[刷槍輸入中] 鍵: ${event.key}, 緩衝區: ${scannerBuffer}`);
+        
+//         // 6. 設定計時器：如果在 50ms 內沒有新的輸入，則進行超時結算
+//         scannerTimer = setTimeout(() => {
+//             if (scannerBuffer) {
+//                 // 如果超時，表示刷槍缺少 Enter，我們在這裡將數據強行結算。
+//                 const code = scannerBuffer.trim();
+//                 scannerBuffer = '';
+                
+//                 // 只有在超時且 code 有內容時才結算並報警
+//                 if (code) {
+//                     statusEl.textContent = '掃到 (超時): ' + code;
+//                     enqueue(code);
+//                     // 注意：超時結算時，code 可能會包含功能鍵的名稱 (例如 'TVantennaCable12345')
+//                     appendLog(`🟠 [刷槍超時結算] ⚠️ 缺少 Enter！強行結算代碼: ${code}`);
+//                 } else {
+//                     appendLog(`[刷槍] 輸入超時，緩衝區清空: (無數據)`);
+//                 }
+//             }
+//         }, SCANNER_TIMEOUT_MS);
+//     }
+// }
+
 function handleScannerInput(event) {
     // 1. 只有在刷槍模式啟動時才執行
     if (!isScannerMode) return;
 
-    // --- 【修改處】新增除錯 Log 來捕獲被忽略的功能鍵 ---檢查是否收到任何按鍵事件
-    const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
-    if (isFiltered) {
-        appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
-    }
+    // 2. 【核心修正】只接受可打印字符和 Enter 鍵
+    // 使用正則表達式檢查是否為有效字符 (數字、字母、常見符號)
+    const isValidChar = /^[a-zA-Z0-9\-_\.]$/.test(event.key);
+    const isEnter = event.key === 'Enter';
     
-    // 2. 不要看功能鍵
-    // if (event.key.length !== 1 && event.key !== 'Enter') return; 
+    // 如果既不是有效字符也不是 Enter,直接忽略
+    if (!isValidChar && !isEnter) {
+        // 【可選】除錯用:記錄被過濾的按鍵
+        if (event.key.length > 1) {
+            appendLog(`⚠️ [已過濾] 功能鍵: ${event.key}`);
+        }
+        return;
+    }
 
-    // 3. 重置計時器：每一次按鍵都重置，確保在短時間內完成的輸入被視為一個條碼
+    // 3. 重置計時器
     if (scannerTimer) clearTimeout(scannerTimer);
 
-    // 4. 檢查是否為條碼結束符號 (通常是 Enter)
-    if (event.key === 'Enter') {
+    // 4. 檢查是否為條碼結束符號 (Enter)
+    if (isEnter) {
         event.preventDefault(); // 阻止換行或表單提交
         
         const code = scannerBuffer.trim();
@@ -326,44 +402,25 @@ function handleScannerInput(event) {
         
         if (code) {
             statusEl.textContent = '掃到: ' + code;
-            enqueue(code); // 傳送給現有的處理邏輯
-            // **【新增除錯點 A】** 輸出成功處理的 Log
-            appendLog(`[刷槍成功] 處理代碼: ${code}`); 
+            enqueue(code);
+            appendLog(`✅ [刷槍成功] ${code}`); 
         } else {
-             // **【新增除錯點 B】** 輸出空的 Enter Log
-             appendLog('⚠️ [刷槍] 收到 Enter，但緩衝區為空，忽略。');
+            appendLog('⚠️ [刷槍] Enter 但緩衝區空白');
         }
     } 
-    // **【新增邏輯】**：如果不是 Enter 鍵，檢查是否為有效字符，然後累積
-    else {
-        // 忽略長度大於 1 的功能鍵，因為它們通常不包含條碼數據
-        if (event.key.length > 1) {
-            // 這會捕獲到 TVantennaCable 等鍵，並直接忽略其數據，但不會清空緩衝區
-            appendLog(`⚠️ [刷槍] 忽略長度 > 1 的功能鍵: ${event.key}`);
-            return;}
-
-        // 5. 累積字符：這裡將會累積 'T', 'V', 'a', 'n', 't', 'e', 'n', 'n', 'a', 'C', 'a', 'b', 'l', 'e' 等所有字符
+    // 5. 累積有效字符
+    else if (isValidChar) {
         scannerBuffer += event.key;
-
-        // 【新增除錯點 C】 即時輸出累積的字符和緩衝區
-        appendLog(`[刷槍輸入中] 鍵: ${event.key}, 緩衝區: ${scannerBuffer}`);
         
-        // 6. 設定計時器：如果在 50ms 內沒有新的輸入，則進行超時結算
+        // 6. 設定超時計時器 (備用機制)
         scannerTimer = setTimeout(() => {
-            if (scannerBuffer) {
-                // 如果超時，表示刷槍缺少 Enter，我們在這裡將數據強行結算。
-                const code = scannerBuffer.trim();
-                scannerBuffer = '';
-                
-                // 只有在超時且 code 有內容時才結算並報警
-                if (code) {
-                    statusEl.textContent = '掃到 (超時): ' + code;
-                    enqueue(code);
-                    // 注意：超時結算時，code 可能會包含功能鍵的名稱 (例如 'TVantennaCable12345')
-                    appendLog(`🟠 [刷槍超時結算] ⚠️ 缺少 Enter！強行結算代碼: ${code}`);
-                } else {
-                    appendLog(`[刷槍] 輸入超時，緩衝區清空: (無數據)`);
-                }
+            const code = scannerBuffer.trim();
+            scannerBuffer = '';
+            
+            if (code) {
+                statusEl.textContent = '掃到 (超時): ' + code;
+                enqueue(code);
+                appendLog(`🟠 [刷槍超時] 無 Enter,強制結算: ${code}`);
             }
         }, SCANNER_TIMEOUT_MS);
     }
@@ -611,13 +668,86 @@ btnStop.addEventListener('click', ()=>{
 function startScannerMode() {
     isScannerMode = true;
     btnSync.disabled = true; // 刷槍模式下禁用立即上傳
+
+    // 【核心修正】建立隱藏輸入框接收刷槍輸入
+    if (!scannerInputField) {
+        scannerInputField = document.createElement('input');
+        scannerInputField.type = 'text';
+        scannerInputField.id = 'hiddenScannerInput';
+        scannerInputField.autocomplete = 'off';
+        scannerInputField.autocorrect = 'off';
+        scannerInputField.autocapitalize = 'off';
+        scannerInputField.spellcheck = false;
+        scannerInputField.inputMode = 'none'; // 不顯示鍵盤
+        scannerInputField.style.cssText = `
+            position: fixed;
+            top: -100px;
+            left: -100px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        `;
+        document.body.appendChild(scannerInputField);
     
-    // 監聽全局的鍵盤輸入
-    document.addEventListener('keydown', handleScannerInput);
+    // // 監聽全局的鍵盤輸入
+    // document.addEventListener('keydown', handleScannerInput);
     
-    statusEl.textContent = '掃描中 (刷槍)...'; // 區分模式
-    appendLog('刷槍掃描模式啟動');
-    startBatchTimer(); // 啟動自動上傳
+    // statusEl.textContent = '掃描中 (刷槍)...'; // 區分模式
+    // appendLog('刷槍掃描模式啟動');
+    // startBatchTimer(); // 啟動自動上傳
+
+    // 監聽 input 事件（接收完整輸入）
+        scannerInputField.addEventListener('input', (e) => {
+            const value = e.target.value;
+            
+            if (scannerTimer) clearTimeout(scannerTimer);
+            
+            scannerTimer = setTimeout(() => {
+                const code = scannerInputField.value.trim();
+                if (code) {
+                    statusEl.textContent = '掃到: ' + code;
+                    enqueue(code);
+                    appendLog(`✅ [刷槍] ${code}`);
+                }
+                scannerInputField.value = '';
+            }, SCANNER_TIMEOUT_MS);
+        });
+        
+        // 監聽 Enter 鍵（立即處理）
+        scannerInputField.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (scannerTimer) clearTimeout(scannerTimer);
+                
+                const code = scannerInputField.value.trim();
+                if (code) {
+                    statusEl.textContent = '掃到: ' + code;
+                    enqueue(code);
+                    appendLog(`✅ [刷槍] ${code}`);
+                }
+                scannerInputField.value = '';
+            }
+        });
+    }
+    
+    // 聚焦到隱藏輸入框
+    scannerInputField.focus();
+    
+    // 每隔一段時間重新聚焦（防止失焦）
+    const focusInterval = setInterval(() => {
+        if (!isScannerMode) {
+            clearInterval(focusInterval);
+            return;
+        }
+        if (document.activeElement !== scannerInputField) {
+            scannerInputField.focus();
+        }
+    }, 1000);
+    
+    statusEl.textContent = '掃描中 (刷槍)...';
+    appendLog('🔫 刷槍模式啟動 - 請使用刷槍掃描');
+    startBatchTimer();
 }
 
 function stopScannerMode() {
@@ -625,7 +755,13 @@ function stopScannerMode() {
     btnSync.disabled = false; // 恢復立即上傳
     
     // 移除鍵盤監聽器
-    document.removeEventListener('keydown', handleScannerInput);
+    // document.removeEventListener('keydown', handleScannerInput);
+
+    // 移除隱藏輸入框
+    if (scannerInputField) {
+        scannerInputField.remove();
+        scannerInputField = null;
+    }
     
     // 清理刷槍緩衝區和計時器
     scannerBuffer = '';
