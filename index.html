@@ -304,6 +304,8 @@ const SCANNER_TIMEOUT_MS = 50;
 function handleScannerInput(event) {
     // 1. 只有在刷槍模式啟動時才執行
     if (!isScannerMode) return;
+    // **【新增這行】** 檢查是否收到任何按鍵事件
+    appendLog(`[除錯] 收到 KeyDown: Key=${event.key}, Code=${event.code}, Length=${event.key.length}`);
     
     // 2. 忽略功能鍵
     if (event.key.length !== 1 && event.key !== 'Enter') return; 
