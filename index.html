@@ -726,22 +726,53 @@ function startScannerMode() {
             // 【新增除錯】記錄所有按鍵
             appendLog(`⌨️ [按鍵偵測] Key: "${e.key}", Code: "${e.code}", 輸入框值: "${scannerInputField.value}"`);
             
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                if (scannerTimer) clearTimeout(scannerTimer);
+        //     if (e.key === 'Enter') {
+        //         e.preventDefault();
+        //         if (scannerTimer) clearTimeout(scannerTimer);
                 
+        //         const code = scannerInputField.value.trim();
+        //         appendLog(`↵ [Enter 觸發] 最終值: "${code}" (長度: ${code.length})`);
+        //         if (code) {
+        //             statusEl.textContent = '掃到: ' + code;
+        //             enqueue(code);
+        //             appendLog(`✅ [刷槍成功 via Enter] ${code}`);
+        //         } else {
+        //             appendLog(`⚠️ [Enter 但無數據] 輸入框為空`);
+        //         }
+        //         scannerInputField.value = '';
+        //     }
+        // });
+
+            // 移除 if (e.key === 'Enter') 內的結算邏輯
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            
+            // ❌ 移除這裡所有的 clearTimeout(scannerTimer); 和 enqueue(code); 邏輯
+            
+            // 【新增 Log】確認 Enter 有被接收，但交給超時處理
+            appendLog(`↵ [Enter 偵測] 接收到 Enter，將交由 input 超時機制處理。`); 
+            
+            // ❗️ 關鍵：為了避免 enter 結束後再次觸發超時，可以執行以下操作
+            // 讓 Enter 觸發 input 事件的超時邏輯立即運行：
+            if (scannerTimer) clearTimeout(scannerTimer);
+            
+            // 立即觸發一個超時結算，取代舊的邏輯
+            setTimeout(() => {
+                // 這段邏輯與 input 監聽器中的超時邏輯相同
                 const code = scannerInputField.value.trim();
-                appendLog(`↵ [Enter 觸發] 最終值: "${code}" (長度: ${code.length})`);
+                appendLog(`⏱️ [Enter 後立即結算] 最終值: "${code}"`);
                 if (code) {
                     statusEl.textContent = '掃到: ' + code;
                     enqueue(code);
-                    appendLog(`✅ [刷槍成功 via Enter] ${code}`);
+                    appendLog(`✅ [刷槍成功 via Enter Timeout] ${code}`);
                 } else {
-                    appendLog(`⚠️ [Enter 但無數據] 輸入框為空`);
+                     appendLog(`⚠️ [Enter 後無數據] 忽略`);
                 }
                 scannerInputField.value = '';
-            }
-        });
+            }, 5); // 極短延遲確保輸入法完成寫入
+        }
+        // 否則，不做任何動作，讓輸入法在背景自行處理
+    });
     }
     
     // 聚焦到隱藏輸入框
