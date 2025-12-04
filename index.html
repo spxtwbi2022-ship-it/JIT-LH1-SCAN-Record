@@ -333,8 +333,7 @@ function handleScannerInput(event) {
              // **【新增除錯點 B】** 輸出空的 Enter Log
              appendLog('⚠️ [刷槍] 收到 Enter，但緩衝區為空，忽略。');
         }
-    } else {
-
+    } 
     // **【新增邏輯】**：如果不是 Enter 鍵，檢查是否為有效字符，然後累積
     else {
         // 忽略長度大於 1 的功能鍵，因為它們通常不包含條碼數據
