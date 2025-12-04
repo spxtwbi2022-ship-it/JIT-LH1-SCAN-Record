@@ -723,15 +723,21 @@ function startScannerMode() {
         
         // 監聽 Enter 鍵（立即處理）
         scannerInputField.addEventListener('keydown', (e) => {
+            // 【新增除錯】記錄所有按鍵
+            appendLog(`⌨️ [按鍵偵測] Key: "${e.key}", Code: "${e.code}", 輸入框值: "${scannerInputField.value}"`);
+            
             if (e.key === 'Enter') {
                 e.preventDefault();
                 if (scannerTimer) clearTimeout(scannerTimer);
                 
                 const code = scannerInputField.value.trim();
+                appendLog(`↵ [Enter 觸發] 最終值: "${code}" (長度: ${code.length})`);
                 if (code) {
                     statusEl.textContent = '掃到: ' + code;
                     enqueue(code);
-                    appendLog(`✅ [刷槍] ${code}`);
+                    appendLog(`✅ [刷槍成功 via Enter] ${code}`);
+                } else {
+                    appendLog(`⚠️ [Enter 但無數據] 輸入框為空`);
                 }
                 scannerInputField.value = '';
             }
@@ -740,6 +746,7 @@ function startScannerMode() {
     
     // 聚焦到隱藏輸入框
     scannerInputField.focus();
+    appendLog(`🎯 [聚焦狀態] 輸入框已聚焦: ${document.activeElement === scannerInputField}`);
     
     // 每隔一段時間重新聚焦（防止失焦）
     const focusInterval = setInterval(() => {
@@ -747,7 +754,8 @@ function startScannerMode() {
             clearInterval(focusInterval);
             return;
         }
-        if (document.activeElement !== scannerInputField) {
+       if (document.activeElement !== scannerInputField) {
+            appendLog(`⚠️ [失焦偵測] 重新聚焦輸入框`);
             scannerInputField.focus();
         }
     }, 1000);
