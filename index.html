@@ -306,10 +306,10 @@ function handleScannerInput(event) {
     if (!isScannerMode) return;
 
     // --- 【修改處】新增除錯 Log 來捕獲被忽略的功能鍵 ---檢查是否收到任何按鍵事件
-    // const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
-    // if (isFiltered) {
-    //     appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
-    // }
+    const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
+    if (isFiltered) {
+        appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
+    }
     
     // 2. 不要看功能鍵
     // if (event.key.length !== 1 && event.key !== 'Enter') return; 
@@ -336,13 +336,11 @@ function handleScannerInput(event) {
     } 
     // **【新增邏輯】**：如果不是 Enter 鍵，檢查是否為有效字符，然後累積
     else {
-        // // 忽略長度大於 1 的功能鍵，因為它們通常不包含條碼數據
-        // if (event.key.length > 1) {
-        //     // 這會捕獲到 TVantennaCable 等鍵，並直接忽略其數據，但不會清空緩衝區
-        //     appendLog(`⚠️ [刷槍] 忽略長度 > 1 的功能鍵: ${event.key}`);
-        //     return;
-        
-        // **【關鍵修改區域】** // 🚨 不再檢查 event.key.length，無條件累積所有按鍵的名稱
+        // 忽略長度大於 1 的功能鍵，因為它們通常不包含條碼數據
+        if (event.key.length > 1) {
+            // 這會捕獲到 TVantennaCable 等鍵，並直接忽略其數據，但不會清空緩衝區
+            appendLog(`⚠️ [刷槍] 忽略長度 > 1 的功能鍵: ${event.key}`);
+            return;
 
         // 5. 累積字符：這裡將會累積 'T', 'V', 'a', 'n', 't', 'e', 'n', 'n', 'a', 'C', 'a', 'b', 'l', 'e' 等所有字符
         scannerBuffer += event.key;
