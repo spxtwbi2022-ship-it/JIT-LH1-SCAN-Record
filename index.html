@@ -299,7 +299,7 @@ let scannerBuffer = '';
 let scannerTimer = null; // 用於判斷輸入結束
 
 // 條碼輸入結束的延遲時間 (ms)，刷槍輸入通常很快，這個延遲足夠區分手動輸入
-const SCANNER_TIMEOUT_MS = 150; 
+const SCANNER_TIMEOUT_MS = 250; 
 
 function handleScannerInput(event) {
     // 1. 只有在刷槍模式啟動時才執行
