@@ -306,6 +306,12 @@ function handleScannerInput(event) {
     if (!isScannerMode) return;
     // **【新增這行】** 檢查是否收到任何按鍵事件
     appendLog(`[除錯] 收到 KeyDown: Key=${event.key}, Code=${event.code}, Length=${event.key.length}`);
+
+    // --- 【修改處】新增除錯 Log 來捕獲被忽略的功能鍵 ---
+    const isFiltered = (event.key.length !== 1 && event.key !== 'Enter');
+    if (isFiltered) {
+        appendLog(`⚠️ [被忽略] 偵測到功能鍵。Key: ${event.key}, 長度: ${event.key.length}`);
+    }
     
     // 2. 忽略功能鍵
     if (event.key.length !== 1 && event.key !== 'Enter') return; 
