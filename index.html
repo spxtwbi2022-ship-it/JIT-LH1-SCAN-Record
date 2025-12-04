@@ -28,7 +28,8 @@ button{padding:8px 12px}
         <option value="">-- 請先選擇專車 --</option>
     </select>
 </label>
-<button id="btnStart">啟動相機掃描</button>
+<button id="btnStartCamera">啟動相機掃描</button>
+<button id="btnStartScanner">啟動刷槍掃描</button>
 <button id="btnStop">停止</button>
 <button id="btnSync">立即上傳</button>
 </div>
@@ -69,7 +70,10 @@ button{padding:8px 12px}
 // const sellerInput = document.getElementById('seller');
 const whTruckNumberSelect = document.getElementById('whTruckNumber'); // 👈 新增專車下拉選單變數
 const sellerSelect = document.getElementById('seller');
-const btnStart = document.getElementById('btnStart');
+// const btnStart = document.getElementById('btnStart');
+// 變更：將 btnStart 變數重新命名並新增刷槍按鈕變數
+const btnStartCamera = document.getElementById('btnStartCamera'); // 👈 從 btnStart 變更
+const btnStartScanner = document.getElementById('btnStartScanner'); // 👈 新增
 const btnStop = document.getElementById('btnStop');
 const btnSync = document.getElementById('btnSync');
 const logEl = document.getElementById('log');
@@ -82,12 +86,13 @@ const scanTableBody = document.querySelector('#scanTable tbody');
 const uploadedCountEl = document.getElementById('uploadedCount'); 
 const pendingCountEl = document.getElementById('pendingCount');
 
-// // 【新增】音效相關變數和函式
-// let audio = null;
-// 替換：音效相關變數和函式 - 使用 Web Audio API
+// 音效相關變數和函式 - 使用 Web Audio API
 let audioContext = null;
 
 let html5QrScanner = null;
+let isScanning = false; // 追蹤相機掃描狀態
+let isScannerMode = false; // 👈 新增：追蹤是否處於刷槍掃描模式
+    
 let buffer = []; // 未送出的掃描資料
 let sending = false;
 let timerId = null;
@@ -290,6 +295,48 @@ function enqueue(code){
     if(buffer.length >= BATCH_SIZE) sendBatch();
 }
 
+// 刷槍掃描邏輯的緩衝區
+let scannerBuffer = ''; 
+let scannerTimer = null; // 用於判斷輸入結束
+
+// 條碼輸入結束的延遲時間 (ms)，刷槍輸入通常很快，這個延遲足夠區分手動輸入
+const SCANNER_TIMEOUT_MS = 50; 
+
+function handleScannerInput(event) {
+    // 1. 只有在刷槍模式啟動時才執行
+    if (!isScannerMode) return;
+    
+    // 2. 忽略功能鍵
+    if (event.key.length !== 1 && event.key !== 'Enter') return; 
+
+    // 3. 重置計時器：每一次按鍵都重置，確保在短時間內完成的輸入被視為一個條碼
+    if (scannerTimer) clearTimeout(scannerTimer);
+
+    // 4. 檢查是否為條碼結束符號 (通常是 Enter)
+    if (event.key === 'Enter') {
+        event.preventDefault(); // 阻止換行或表單提交
+        
+        const code = scannerBuffer.trim();
+        scannerBuffer = ''; // 清空緩衝區
+        
+        if (code) {
+            statusEl.textContent = '掃到: ' + code;
+            enqueue(code); // 傳送給現有的處理邏輯
+        }
+    } else {
+        // 5. 累積字符
+        scannerBuffer += event.key;
+        
+        // 6. 設定計時器：如果在 50ms 內沒有新的輸入，則清空緩衝區 (防止手動打字被誤認為條碼)
+        scannerTimer = setTimeout(() => {
+            if (scannerBuffer) {
+                appendLog(`[刷槍] 輸入超時，緩衝區清空: ${scannerBuffer}`);
+            }
+            scannerBuffer = ''; 
+        }, SCANNER_TIMEOUT_MS);
+    }
+}
+
 // 【最終版本：修復連發、未定義變數和傳送錯誤】
 async function sendBatch(){
     if(sending) return;
@@ -436,39 +483,65 @@ async function loadSellers(truckNumber) {
     }
 }
 
-btnStart.addEventListener('click', ()=>{
-// 必須同時選擇 專車編號 且選擇 Seller
-if(!whTruckNumberSelect.value){ 
-    alert('請選擇專車編號 (Truck)'); 
-    return; 
-}
-if(!sellerSelect.value){ 
-    alert('請選擇賣家 Seller'); 
-    return; 
-}
-
-// 【新增】在用戶點擊時初始化 Audio Context
-initAudioContext(); // <-- 在這裡呼叫
+btnStartCamera.addEventListener('click', ()=>{
+    // 必須同時選擇 專車編號 且選擇 Seller
+    if(!whTruckNumberSelect.value){ 
+        alert('請選擇專車編號 (Truck)'); 
+        return; 
+    }
+    if(!sellerSelect.value){ 
+        alert('請選擇賣家 Seller'); 
+        return; 
+    }
     
-if(html5QrScanner) return;
-html5QrScanner = new Html5Qrcode("qr-reader");
-html5QrScanner.start({ facingMode: 'environment' }, {
-    fps: 10,
-    qrbox: {width:250, height:250}
-}, (decodedText, decodedResult)=>{
-    statusEl.textContent = '掃到: '+decodedText;
-    enqueue(decodedText);
-}, (errorMessage) => {
-    // parse errors or no result
-}).then(()=>{
-    appendLog('相機啟動'); 
-    statusEl.textContent='掃描中...';
-    isScanning = true; // 【修改點】啟動掃描
-    btnSync.disabled = true; // 【修改點】掃描啟動時禁用上傳
-}).catch(err=>{ alert('無法啟動相機: '+err); });
+    // 【新增】檢查是否已經處於刷槍模式，如果是，先停止
+        if (isScannerMode) {
+            // 呼叫停止函式來關閉刷槍模式
+            stopScannerMode(); 
+        }
+    
+    // 【新增】在用戶點擊時初始化 Audio Context
+    initAudioContext(); // <-- 在這裡呼叫
+        
+    if(html5QrScanner) return; // 相機已經啟動則退出
+        
+    html5QrScanner = new Html5Qrcode("qr-reader");
+    html5QrScanner.start({ facingMode: 'environment' }, {
+        fps: 10,
+        qrbox: {width:250, height:250}
+    }, (decodedText, decodedResult)=>{
+        statusEl.textContent = '掃到: '+decodedText;
+        enqueue(decodedText);
+    }, (errorMessage) => {
+        // parse errors or no result
+    }).then(()=>{
+        appendLog('相機啟動'); 
+        statusEl.textContent='掃描中...';
+        isScanning = true; // 【修改點】啟動掃描
+        btnSync.disabled = true; // 【修改點】掃描啟動時禁用上傳
+    }).catch(err=>{ alert('無法啟動相機: '+err); });
+    
+    
+    startBatchTimer();
+});
 
+// 【新增】啟動刷槍掃描按鈕的事件監聽器
+btnStartScanner.addEventListener('click', ()=>{
+    if(!whTruckNumberSelect.value){ alert('請選擇專車編號'); return; }
+    if(!sellerSelect.value){ alert('請選擇賣家 Seller'); return; }
+    
+    // 【新增】檢查是否已經處於相機模式，如果是，先停止
+    if (isScanning) {
+        // 呼叫停止函式來關閉相機模式
+        btnStop.click(); // 模擬點擊停止按鈕
+    }
 
-startBatchTimer();
+    // 【新增】在用戶點擊時初始化 Audio Context
+    initAudioContext(); // <-- 在這裡呼叫
+    if (isScannerMode) return; // 已經啟動則退出
+    
+    // 啟用刷槍模式
+    startScannerMode();
 });
 
 btnStop.addEventListener('click', ()=>{
@@ -480,11 +553,48 @@ btnStop.addEventListener('click', ()=>{
             statusEl.textContent='已停止';
             isScanning = false; // 【修改點】停止掃描
             btnSync.disabled = false; // 【修改點】停止後啟用上傳
-        }).catch(e=>console.error(e)); }
-stopBatchTimer();
+        }).catch(e=>console.error(e)); 
+    }
+    // 停止刷槍模式
+    if (isScannerMode) {
+        stopScannerMode();
+    }
+    
+    stopBatchTimer();
+    
+    // 如果相機和刷槍都沒有啟動，確保狀態正確
+    if (!isScanning && !isScannerMode) {
+        statusEl.textContent = '已停止';
+    }
 });
 
+// 【新增兩個輔助函式】
+function startScannerMode() {
+    isScannerMode = true;
+    btnSync.disabled = true; // 刷槍模式下禁用立即上傳
+    
+    // 監聽全局的鍵盤輸入
+    document.addEventListener('keydown', handleScannerInput);
+    
+    statusEl.textContent = '掃描中 (刷槍)...'; // 區分模式
+    appendLog('刷槍掃描模式啟動');
+    startBatchTimer(); // 啟動自動上傳
+}
 
+function stopScannerMode() {
+    isScannerMode = false;
+    btnSync.disabled = false; // 恢復立即上傳
+    
+    // 移除鍵盤監聽器
+    document.removeEventListener('keydown', handleScannerInput);
+    
+    // 清理刷槍緩衝區和計時器
+    scannerBuffer = '';
+    if (scannerTimer) clearTimeout(scannerTimer);
+    
+    appendLog('刷槍掃描模式停止');
+}
+    
 btnSync.addEventListener('click', ()=>{ 
     // 【修改點】如果正在掃描，彈出警告並返回
     if(isScanning){
@@ -549,6 +659,11 @@ sellerSelect.addEventListener('change', () => {
         } else {
             // 如果相機沒開，確保上傳按鈕可用
             btnSync.disabled = false;
+        }
+        // 【新增】停止刷槍模式
+        if (isScannerMode) {
+            stopScannerMode();
+            statusEl.textContent = '已停止 (切換作業)';
         }
     }
 });
